@@ -1,5 +1,3 @@
-> **Beta Notice**: This project is currently in beta phase. Code will be uploaded later.
-
 # Peek4c
 
 > ⚠️ **IMPORTANT WARNING**  

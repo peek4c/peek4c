@@ -1,0 +1,65 @@
+{
+  "expo": {
+    "name": "Peek4c",
+    "slug": "peek 4 real",
+    "version": "1.0.0-beta",
+    "orientation": "portrait",
+    "icon": "./assets/adaptive-icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+        "android.permission.ACCESS_MEDIA_LOCATION",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.READ_MEDIA_AUDIO"
+      ],
+      "package": "com.anonymous.peek4c",
+      "config": {
+        "largeHeap": true
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-sqlite",
+      "expo-secure-store",
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Allow $(PRODUCT_NAME) to save photos and videos to your library",
+          "savePhotosPermission": "Allow $(PRODUCT_NAME) to save photos and videos to your library",
+          "isAccessMediaLocationEnabled": true,
+          "androidPermissions": [
+            "android.permission.READ_MEDIA_IMAGES",
+            "android.permission.READ_MEDIA_VIDEO"
+          ]
+        }
+      ],
+      "expo-video",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/icon2.png",
+          "imageWidth": 1024,
+          "backgroundColor": "#080b1c",
+          "resizeMode": "cover"
+        }
+      ]
+    ],
+    "owner": "peek4c"
+  }
+}

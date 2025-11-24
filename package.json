@@ -1,0 +1,44 @@
+{
+  "name": "peek4c",
+  "version": "1.0.0",
+  "description": "An open-source third-party 4chan browser app for educational purposes",
+  "license": "GPL-3.0",
+  "author": "Peek4c Contributors",
+  "main": "index.ts",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "web": "expo start --web"
+  },
+  "dependencies": {
+    "@expo/vector-icons": "^15.0.3",
+    "@react-native-community/netinfo": "11.4.1",
+    "@react-navigation/bottom-tabs": "^7.8.6",
+    "@react-navigation/native": "^7.1.21",
+    "@react-navigation/stack": "^7.6.5",
+    "axios": "^1.13.2",
+    "cheerio": "^1.1.2",
+    "expo": "~54.0.25",
+    "expo-av": "~16.0.7",
+    "expo-file-system": "~19.0.19",
+    "expo-media-library": "~18.2.0",
+    "expo-secure-store": "~15.0.7",
+    "expo-splash-screen": "~31.0.11",
+    "expo-sqlite": "~16.0.9",
+    "expo-status-bar": "~3.0.8",
+    "expo-video": "~3.0.14",
+    "react": "19.1.0",
+    "react-native": "0.81.5",
+    "react-native-exception-handler": "^2.10.10",
+    "react-native-gesture-handler": "~2.28.0",
+    "react-native-reanimated": "~4.1.1",
+    "react-native-safe-area-context": "~5.6.0",
+    "react-native-screens": "~4.16.0"
+  },
+  "devDependencies": {
+    "@types/react": "~19.1.0",
+    "typescript": "~5.9.2"
+  },
+  "private": true
+}
