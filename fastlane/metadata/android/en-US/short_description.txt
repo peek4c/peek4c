@@ -1,0 +1,1 @@
+A third-party 4chan client application providing a TikTok-like vertical scrolling experience.

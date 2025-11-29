@@ -65,6 +65,13 @@ npx expo prebuild --clean
 - Regenerates native code from `app.json`
 - Applies all config plugins
 
+### Debug Build
+
+```powershell
+# Build debug APK
+npx expo run:android
+```
+
 ### Release APK (Optimized, for distribution)
 
 ```powershell
@@ -87,5 +94,5 @@ To retrieve the SQLite database (`app.db`) from the device for verification:
 
 ```powershell
 # Add cmd /c before the command and wrap the entire command in double quotes
-cmd /c "D:\Android\Sdk\platform-tools\adb.exe exec-out run-as com.anonymous.peek4c cat files/SQLite/app.db > ./app.db"
+cmd /c "D:\Android\Sdk\platform-tools\adb.exe exec-out run-as io.github.peek4c cat files/SQLite/app.db > ./app.db"
 ```

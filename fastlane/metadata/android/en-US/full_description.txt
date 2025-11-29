@@ -1,0 +1,17 @@
+Peek4c is a third-party 4chan client application built with React Native and Expo, providing a TikTok-like vertical scrolling browsing experience.
+
+Key Features:
+- Vertical scrolling for browsing 4chan posts and media
+- Local caching and offline browsing
+- Favorites (Peek) and browsing history
+- Local password protection
+- Support for images and videos
+- Modern user interface
+
+Privacy & Security:
+- All data is stored locally on your device
+- Only 4chan API requests are made
+- No data is uploaded to any server
+
+Disclaimer:
+This is an open-source, non-profit third-party 4chan browser for educational and technical learning purposes only. 4chan.org may contain adult, violent, offensive, or illegal content. By using this app, you confirm you are 18+ and assume all risks.

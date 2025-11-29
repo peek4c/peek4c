@@ -14,6 +14,7 @@ import { View, Text, FlatList, TouchableOpacity, StyleSheet, Alert, Image, Dimen
 import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getHistory, getStars, getFollowing, clearHistory, clearCache, toggleFollow, getHistoryBoards, getBlockedItems, toggleBlock, isBlocked } from '../database/db';
+import BlockedKeywordsView from '../components/BlockedKeywordsView';
 import { ThreadPost } from '../types';
 import { Ionicons } from '@expo/vector-icons';
 import { getMediaUri } from '../services/proxy';
@@ -41,7 +42,7 @@ export default function MeScreen({ navigation }: any) {
     const [showFilterMenu, setShowFilterMenu] = useState(false);
 
     // Following filter states
-    const [followFilter, setFollowFilter] = useState<'Following' | 'Blocked'>('Following');
+    const [followFilter, setFollowFilter] = useState<'Following' | 'Blocked' | 'Keywords'>('Following');
     const [showFollowFilter, setShowFollowFilter] = useState(false);
 
     const [hasMore, setHasMore] = useState(true);
@@ -392,6 +393,18 @@ export default function MeScreen({ navigation }: any) {
                             <Ionicons name="checkmark" size={20} color="#ff0050" />
                         )}
                     </TouchableOpacity>
+                    <TouchableOpacity
+                        style={styles.filterMenuItem}
+                        onPress={() => {
+                            setFollowFilter('Keywords');
+                            setShowFollowFilter(false);
+                        }}
+                    >
+                        <Text style={styles.filterMenuText}>Keywords</Text>
+                        {followFilter === 'Keywords' && (
+                            <Ionicons name="checkmark" size={20} color="#ff0050" />
+                        )}
+                    </TouchableOpacity>
                 </View>
             )}
 
@@ -401,24 +414,28 @@ export default function MeScreen({ navigation }: any) {
                 </View>
             )}
 
-            <FlatList
-                key={activeTab}
-                data={data}
-                keyExtractor={(item, index) => `${item.board}-${item.no}-${index}`}
-                renderItem={renderItem}
-                numColumns={activeTab === 'Following' ? 1 : GRID_COLUMNS}
-                contentContainerStyle={styles.grid}
-                ListEmptyComponent={<Text style={styles.empty}>No items found</Text>}
-                onEndReached={activeTab === 'History' ? loadMore : undefined}
-                onEndReachedThreshold={0.5}
-                ListFooterComponent={
-                    activeTab === 'History' && isLoadingMore ? (
-                        <View style={styles.loadingFooter}>
-                            <Text style={styles.loadingText}>Loading more...</Text>
-                        </View>
-                    ) : null
-                }
-            />
+            {activeTab === 'Following' && followFilter === 'Keywords' ? (
+                <BlockedKeywordsView />
+            ) : (
+                <FlatList
+                    key={activeTab}
+                    data={data}
+                    keyExtractor={(item, index) => `${item.board}-${item.no}-${index}`}
+                    renderItem={renderItem}
+                    numColumns={activeTab === 'Following' ? 1 : GRID_COLUMNS}
+                    contentContainerStyle={styles.grid}
+                    ListEmptyComponent={<Text style={styles.empty}>No items found</Text>}
+                    onEndReached={activeTab === 'History' ? loadMore : undefined}
+                    onEndReachedThreshold={0.5}
+                    ListFooterComponent={
+                        activeTab === 'History' && isLoadingMore ? (
+                            <View style={styles.loadingFooter}>
+                                <Text style={styles.loadingText}>Loading more...</Text>
+                            </View>
+                        ) : null
+                    }
+                />
+            )}
 
             {activeTab === 'History' && (
                 <View style={styles.footer}>

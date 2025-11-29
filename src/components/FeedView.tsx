@@ -4,6 +4,7 @@ import { fetchJson } from '../services/proxy';
 import { ThreadPost, Thread } from '../types';
 import ThreadItem from './ThreadItem';
 import { addToHistory, getRecommendedItems, saveThreads, isThreadFullyLoaded, getHistoryNos, updateThreadLastFetched, getFollowedUnreadThreads, getFollowing, getFollowedThreadsNeedingUpdate } from '../database/db';
+import { filterPostsByKeywords } from '../database/db';
 import { useNavigation } from '@react-navigation/native';
 import { rateLimiter } from '../services/rateLimiter';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -23,7 +24,8 @@ export default function FeedView({ board, isActiveTab, workSafeEnabled = false }
     const [activeIndex, setActiveIndex] = useState(0);
     const [preloadWindow, setPreloadWindow] = useState(2);
     const [emptyMessage, setEmptyMessage] = useState<string | null>(null);
-    const preloadTimer = useRef<NodeJS.Timeout | null>(null);
+    const [containerHeight, setContainerHeight] = useState(Dimensions.get('window').height);
+
     const navigation = useNavigation<any>();
 
     // Pagination state
@@ -41,7 +43,6 @@ export default function FeedView({ board, isActiveTab, workSafeEnabled = false }
         loadInitialData();
         return () => {
             mounted.current = false;
-            if (preloadTimer.current) clearTimeout(preloadTimer.current);
         };
     }, [board, workSafeEnabled]);
 
@@ -68,7 +69,9 @@ export default function FeedView({ board, isActiveTab, workSafeEnabled = false }
                                     board: op.board,
                                     resto: p.resto || 0
                                 }));
-                                await saveThreads(posts);
+                                // Filter posts by blocked keywords before saving
+                                const filteredPosts = await filterPostsByKeywords(posts);
+                                await saveThreads(filteredPosts);
                                 await updateThreadLastFetched(op.no, op.board);
                             }
                         });
@@ -150,10 +153,13 @@ export default function FeedView({ board, isActiveTab, workSafeEnabled = false }
                     }
                 });
             });
+            // Filter OPs by blocked keywords before saving to DB
+            const filteredOps = await filterPostsByKeywords(ops);
+
             // 获取所有 ops 中的 no，然后批量在 history 查询是否已经存在，将存在的过滤掉，过滤后入 size = 0，就调用 loadMoreFromDB 获取新数据    
-            const nos = ops.map(op => op.no);
+            const nos = filteredOps.map(op => op.no);
             const historyNos = await getHistoryNos(board, nos);
-            const newOps = ops.filter(op => !historyNos.includes(op.no));
+            const newOps = filteredOps.filter(op => !historyNos.includes(op.no));
             if (newOps.length === 0) {
                 console.log(`[FeedView] No new OPs found for board: ${board}`);
                 await loadMoreFromDB([]);
@@ -214,7 +220,9 @@ export default function FeedView({ board, isActiveTab, workSafeEnabled = false }
                                 board,
                                 resto: p.resto || 0
                             }));
-                            await saveThreads(posts);
+                            // Filter posts by blocked keywords before saving
+                            const filteredPosts = await filterPostsByKeywords(posts);
+                            await saveThreads(filteredPosts);
                             await updateThreadLastFetched(threadId, board);
                             console.log(`[FeedView] Fetched and saved thread ${threadId}`);
                         }
@@ -269,10 +277,7 @@ export default function FeedView({ board, isActiveTab, workSafeEnabled = false }
             const index = viewableItems[0].index;
             setActiveIndex(index);
 
-            setPreloadWindow(2);
-            preloadTimer.current = setInterval(() => {
-                setPreloadWindow(prev => prev + 1);
-            }, 30000);
+            setPreloadWindow(2); // Keep preload window small and fixed to prevent OOM
 
             // Add to history
             const item = threads[index];
@@ -318,7 +323,7 @@ export default function FeedView({ board, isActiveTab, workSafeEnabled = false }
     }
 
     return (
-        <View style={styles.container}>
+        <View style={styles.container} onLayout={(e) => setContainerHeight(e.nativeEvent.layout.height)}>
             <FlatList
                 data={threads}
                 keyExtractor={(item) => `${item.board}-${item.no}`}
@@ -329,11 +334,12 @@ export default function FeedView({ board, isActiveTab, workSafeEnabled = false }
                         isActive={index === activeIndex && isActiveTab}
                         shouldLoad={Math.abs(index - activeIndex) <= preloadWindow}
                         onNavigate={() => handleNavigateToDetail(item)}
+                        itemHeight={containerHeight}
                     />
                 )}
                 pagingEnabled
                 showsVerticalScrollIndicator={false}
-                snapToInterval={height}
+                snapToInterval={containerHeight}
                 decelerationRate="fast"
                 onViewableItemsChanged={onViewableItemsChanged}
                 viewabilityConfig={{ itemVisiblePercentThreshold: 50 }}
@@ -342,12 +348,13 @@ export default function FeedView({ board, isActiveTab, workSafeEnabled = false }
                 windowSize={5}
                 onEndReached={handleEndReached}
                 onEndReachedThreshold={0.5}
+                removeClippedSubviews={true}
             />
         </View>
     );
 }
 
-function FeedItemWrapper({ thread, opThread, isActive, shouldLoad, onNavigate }: { thread: ThreadPost; opThread: ThreadPost; isActive: boolean; shouldLoad: boolean; onNavigate: () => void }) {
+function FeedItemWrapper({ thread, opThread, isActive, shouldLoad, onNavigate, itemHeight }: { thread: ThreadPost; opThread: ThreadPost; isActive: boolean; shouldLoad: boolean; onNavigate: () => void; itemHeight: number }) {
     // Use react-native-gesture-handler for consistent gesture handling
     const panGesture = Gesture.Pan()
         .activeOffsetX(-20) // Only activate when swiping left at least 20px
@@ -363,12 +370,13 @@ function FeedItemWrapper({ thread, opThread, isActive, shouldLoad, onNavigate }:
 
     return (
         <GestureDetector gesture={panGesture}>
-            <View style={{ width: Dimensions.get('window').width, height: Dimensions.get('window').height }}>
+            <View style={{ width: Dimensions.get('window').width, height: itemHeight }}>
                 <ThreadItem
                     thread={thread}
                     opThread={opThread}
                     isActive={isActive}
                     shouldLoad={shouldLoad}
+                    shouldLoadVideo={isActive} // Only load video for the active item to prevent OOM
                     onPressAvatar={onNavigate}
                 />
             </View>

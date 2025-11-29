@@ -24,9 +24,11 @@ interface Props {
     threadBoard?: string; // Optional context: The board of the thread
     opThread?: ThreadPost;
     context?: string;
+    onZoomChange?: (isZoomed: boolean) => void; // Callback when zoom state changes
+    shouldLoadVideo?: boolean;
 }
 
-export default function ThreadItem({ thread, isActive, onPressAvatar, isActiveTab = true, shouldLoad = true, threadBoard, opThread, context }: Props) {
+export default function ThreadItem({ thread, isActive, onPressAvatar, isActiveTab = true, shouldLoad = true, threadBoard, opThread, context, onZoomChange, shouldLoadVideo }: Props) {
     const [imageUri, setImageUri] = useState<string | null>(null);
     const [thumbnailUri, setThumbnailUri] = useState<string | null>(null);
     const [avatarUri, setAvatarUri] = useState<string | null>(null);
@@ -45,6 +47,14 @@ export default function ThreadItem({ thread, isActive, onPressAvatar, isActiveTa
     const [isSpeedingUp, setIsSpeedingUp] = useState(false);
     const [isSeeking, setIsSeeking] = useState(false);
 
+    // Image zoom states
+    const scale = useSharedValue(1);
+    const savedScale = useSharedValue(1);
+    const translateX = useSharedValue(0);
+    const translateY = useSharedValue(0);
+    const savedTranslateX = useSharedValue(0);
+    const savedTranslateY = useSharedValue(0);
+
     if (!thread) {
         return null;
     }
@@ -57,14 +67,16 @@ export default function ThreadItem({ thread, isActive, onPressAvatar, isActiveTa
 
     // CRITICAL: Use useMemo to stabilize mediaSource and prevent player recreation
     const mediaSource = useMemo(() => {
-        if (!isVideo || !thread.tim || !thread.ext || !shouldLoad) {
+        // Use specific video loading flag if available, otherwise fallback to general load flag
+        const loadVideo = shouldLoadVideo ?? shouldLoad;
+        if (!isVideo || !thread.tim || !thread.ext || !loadVideo) {
             return null;
         }
         return {
             uri: `https://i.4cdn.org/${thread.board}/${thread.tim}${thread.ext}`,
             useCaching: true
         };
-    }, [isVideo, thread.board, thread.tim, thread.ext, shouldLoad]);
+    }, [isVideo, thread.board, thread.tim, thread.ext, shouldLoad, shouldLoadVideo]);
 
     const player = useVideoPlayer(mediaSource, player => {
         if (player) {
@@ -132,6 +144,104 @@ export default function ThreadItem({ thread, isActive, onPressAvatar, isActiveTa
         .onEnd((e) => {
             runOnJS(handleSeekEnd)(e.absoluteX);
         });
+
+    // Image Zoom Gestures
+    const notifyZoomChange = (isZoomed: boolean) => {
+        if (onZoomChange) {
+            onZoomChange(isZoomed);
+        }
+    };
+
+    const panGesture = Gesture.Pan()
+        .manualActivation(true)
+        .onTouchesMove((e, state) => {
+            // Only activate pan if zoomed in
+            if (scale.value > 1) {
+                state.activate();
+            } else {
+                state.fail();
+            }
+        })
+        .onUpdate((e) => {
+            translateX.value = savedTranslateX.value + e.translationX;
+            translateY.value = savedTranslateY.value + e.translationY;
+        })
+        .onEnd(() => {
+            savedTranslateX.value = translateX.value;
+            savedTranslateY.value = translateY.value;
+        });
+
+    const doubleTapGesture = Gesture.Tap()
+        .numberOfTaps(2)
+        .onEnd((e) => {
+            const currentScale = scale.value;
+            let targetScale = 1;
+
+            // Smart zoom logic: 1x -> 2x -> 4x -> 1x
+            if (Math.abs(currentScale - 1) < 0.1) {
+                // At 1x, zoom to 2x
+                targetScale = 2;
+            } else if (Math.abs(currentScale - 2) < 0.1) {
+                // At 2x, zoom to 4x
+                targetScale = 4;
+            } else {
+                // At 4x or any other scale, reset to 1x
+                targetScale = 1;
+            }
+
+            // Use absoluteX/Y for tap position
+            const tapX = e.absoluteX || width / 2;
+            const tapY = e.absoluteY || height / 2;
+
+            // Animate to target scale
+            scale.value = withTiming(targetScale);
+            savedScale.value = targetScale;
+
+            if (targetScale > 1) {
+                // Calculate the point on the image that was tapped
+                // This point should remain at the same screen position after zoom
+                const currentTranslateX = translateX.value;
+                const currentTranslateY = translateY.value;
+
+                // The image point coordinates (relative to image center)
+                const imagePointX = (tapX - width / 2 - currentTranslateX) / currentScale;
+                const imagePointY = (tapY - height / 2 - currentTranslateY) / currentScale;
+
+                // After zooming, we want this image point to still be at (tapX, tapY)
+                // tapX = width/2 + newTranslateX + imagePointX * targetScale
+                // Solving for newTranslateX:
+                const newTranslateX = tapX - width / 2 - imagePointX * targetScale;
+                const newTranslateY = tapY - height / 2 - imagePointY * targetScale;
+
+                translateX.value = withTiming(newTranslateX);
+                translateY.value = withTiming(newTranslateY);
+                savedTranslateX.value = newTranslateX;
+                savedTranslateY.value = newTranslateY;
+            } else {
+                // Reset to 1x: center the image
+                translateX.value = withTiming(0);
+                translateY.value = withTiming(0);
+                savedTranslateX.value = 0;
+                savedTranslateY.value = 0;
+            }
+
+            // Notify zoom state change
+            runOnJS(notifyZoomChange)(targetScale > 1);
+        });
+
+    // Only double tap for zoom, no pinch gesture
+    const imageGestures = Gesture.Race(
+        doubleTapGesture,
+        panGesture
+    );
+
+    const animatedImageStyle = useAnimatedStyle(() => ({
+        transform: [
+            { translateX: translateX.value },
+            { translateY: translateY.value },
+            { scale: scale.value }
+        ]
+    }));
 
     useEffect(() => {
         if (player) {
@@ -208,7 +318,12 @@ export default function ThreadItem({ thread, isActive, onPressAvatar, isActiveTa
 
     useEffect(() => {
         const loadMedia = async () => {
-            if (!shouldLoad) return;
+            if (!shouldLoad) {
+                setImageUri(null);
+                setThumbnailUri(null);
+                setAvatarUri(null);
+                return;
+            }
 
             // For images, use proxy caching
             if (!isVideo && thread.tim && thread.ext && !imageUri) {
@@ -372,12 +487,14 @@ export default function ThreadItem({ thread, isActive, onPressAvatar, isActiveTa
                             )}
 
                             {/* Video player */}
-                            <VideoView
-                                style={styles.media}
-                                player={player}
-                                contentFit="contain"
-                                nativeControls={false}
-                            />
+                            {(shouldLoadVideo ?? shouldLoad) && (
+                                <VideoView
+                                    style={styles.media}
+                                    player={player}
+                                    contentFit="contain"
+                                    nativeControls={false}
+                                />
+                            )}
 
                             {/* Loading indicator */}
                             {isVideoLoading && (
@@ -442,12 +559,12 @@ export default function ThreadItem({ thread, isActive, onPressAvatar, isActiveTa
                     </TouchableWithoutFeedback>
                 </GestureDetector>
             ) : (
-                <TouchableWithoutFeedback>
+                <GestureDetector gesture={imageGestures}>
                     <View style={styles.mediaContainer}>
                         {imageUri ? (
-                            <Image
+                            <Animated.Image
                                 source={{ uri: imageUri }}
-                                style={styles.media}
+                                style={[styles.media, animatedImageStyle]}
                                 resizeMode="contain"
                             />
                         ) : (
@@ -459,7 +576,7 @@ export default function ThreadItem({ thread, isActive, onPressAvatar, isActiveTa
                             </View>
                         )}
                     </View>
-                </TouchableWithoutFeedback>
+                </GestureDetector>
             )}
 
             <View style={styles.overlay}>
@@ -752,7 +869,8 @@ const styles = StyleSheet.create({
     },
     thumbnailBackground: {
         position: 'absolute',
-        opacity: 0.5,
+        width: '100%',
+        height: '100%',
     },
     loadingContainer: {
         position: 'absolute',

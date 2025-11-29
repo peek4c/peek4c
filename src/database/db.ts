@@ -131,6 +131,19 @@ export const initDB = async () => {
       PRIMARY KEY (consent_type, version)
     );
   `);
+
+    // Blocked Keywords table
+    await database.execAsync(`
+    CREATE TABLE IF NOT EXISTS blocked_keywords (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      keyword TEXT NOT NULL UNIQUE,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_blocked_keywords_keyword ON blocked_keywords (keyword);
+  `);
+
+    // Initialize default blocked keywords
+    await initDefaultBlockedKeywords();
 };
 
 // Config
@@ -304,7 +317,9 @@ export const getFollowedUnreadThreads = async (
         }
     }
 
-    return items;
+    // Filter by blocked keywords (considering new keywords added after data was saved)
+    const filteredItems = await filterPostsByKeywords(items);
+    return filteredItems;
 };
 
 export const getFollowedThreadsNeedingUpdate = async (): Promise<ThreadPost[]> => {
@@ -335,6 +350,31 @@ export const getThreadItems = async (threadId: number, board: string): Promise<T
         [threadId, threadId, board]
     );
     return results.map(r => JSON.parse(r.data));
+};
+
+export const getThreadItemsWithHistory = async (threadId: number, board: string): Promise<{ posts: ThreadPost[], viewed: Set<number> }> => {
+    const database = await getDB();
+    const results = await database.getAllAsync<{ data: string, is_viewed: number }>(
+        `SELECT t.data, CASE WHEN h.no IS NOT NULL THEN 1 ELSE 0 END as is_viewed
+         FROM threads t
+         LEFT JOIN history h ON t.no = h.no AND t.board = h.board
+         WHERE (t.no = ? OR t.resto = ?) AND t.board = ?
+         ORDER BY t.time ASC`,
+        [threadId, threadId, board]
+    );
+
+    const posts: ThreadPost[] = [];
+    const viewed = new Set<number>();
+
+    results.forEach(r => {
+        const post = JSON.parse(r.data);
+        posts.push(post);
+        if (r.is_viewed) {
+            viewed.add(post.no);
+        }
+    });
+
+    return { posts, viewed };
 };
 
 export const getRecommendedItems = async (board: string, limit: number, excludeIds: number[] = []): Promise<ThreadPost[]> => {
@@ -527,8 +567,11 @@ export const getRecommendedItems = async (board: string, limit: number, excludeI
     // that followed items aren't always at fixed positions (0, 2, 4...).
     shuffleArray(result);
 
-    console.log(`[db] getRecommendedItems result count=${result.length}`);
-    return result;
+    // Filter by blocked keywords (considering new keywords added after data was saved)
+    const filteredResult = await filterPostsByKeywords(result);
+
+    console.log(`[db] getRecommendedItems result count=${filteredResult.length}`);
+    return filteredResult;
 };
 export const toggleBlock = async (item: ThreadPost) => {
     const database = await getDB();
@@ -836,4 +879,226 @@ export const acceptTerms = async (version: string = '1.0.0') => {
         'INSERT OR REPLACE INTO legal_consent (consent_type, version, timestamp, accepted) VALUES (?, ?, ?, ?)',
         ['terms_of_service', version, timestamp, 1]
     );
+};
+
+// --- Blocked Keywords Management ---
+
+const DEFAULT_BLOCKED_KEYWORDS = [
+    // Violence & Fighting
+    'violence',
+    'fight',
+    'beat',
+    'beating',
+    'assault',
+    'attack',
+    'brawl',
+    'war',
+
+    // Regions (often associated with disturbing content)
+    'india',
+    'africa',
+    'brazil',
+    'mexico',
+
+    // Accidents & Disasters
+    'disaster',
+    'train',
+    'accident',
+    'crash',
+    'explosion',
+
+    // Death & Killing
+    'death',
+    'dead',
+    'die',
+    'died',
+    'dying',
+    'kill',
+    'killed',
+    'killing',
+    'murder',
+    'suicide',
+    'electrocution',
+
+    // Gore & Blood
+    'gore',
+    'blood',
+    'bloody',
+    'bleeding',
+    'graphic',
+    'nsfl',
+    'brutal',
+
+    // Weapons & Violence Methods
+    'shooting',
+    'shot',
+    'gun',
+    'stabbing',
+    'stab',
+    'knife',
+    'beheading',
+    'decapitation',
+
+    // Extreme Violence
+    'execution',
+    'torture',
+    'mutilation',
+    'dismember',
+    'severed',
+    'amputation',
+
+    // Bodies & Remains
+    'corpse',
+    'body',
+    'dead body',
+    'remains',
+
+    // Criminal & Cartel
+    'cartel',
+    'gang',
+    'mafia',
+
+    // Injuries & Medical Gore
+    'injury',
+    'wound',
+    'trauma',
+    'burn',
+    'burned',
+
+    // Disgusting & Filth
+    'filth',
+    'vomit',
+    'puke',
+    'puking',
+    'vomiting',
+    'feces',
+    'shit',
+    'poop',
+    'scat',
+    'defecate',
+    'urine',
+    'piss',
+    'pee',
+    'diarrhea',
+    'sewage',
+    'toilet',
+    'gross',
+    'disgusting',
+    'rotten',
+    'decay',
+    'maggot',
+    'worm',
+    'parasite',
+
+    // Other Disturbing
+    'hanging',
+    'lynching',
+    'drowning',
+    'suffocation',
+    'rape',
+    'abuse',
+    'victim'
+];
+
+export const initDefaultBlockedKeywords = async (force: boolean = false) => {
+    const database = await getDB();
+
+    // Check if we've already initialized keywords before
+    if (!force) {
+        const initialized = await getConfig('blocked_keywords_initialized');
+        if (initialized === 'true') {
+            console.log('[db] Blocked keywords already initialized, skipping');
+            return;
+        }
+    }
+
+    const timestamp = Date.now();
+
+    // Add default keywords
+    for (const keyword of DEFAULT_BLOCKED_KEYWORDS) {
+        try {
+            await database.runAsync(
+                'INSERT OR IGNORE INTO blocked_keywords (keyword, created_at) VALUES (?, ?)',
+                [keyword.toLowerCase(), timestamp]
+            );
+        } catch (e) {
+            console.error('[db] Error adding default keyword:', keyword, e);
+        }
+    }
+
+    // Mark as initialized
+    await setConfig('blocked_keywords_initialized', 'true');
+    console.log('[db] Initialized default blocked keywords');
+};
+
+export const addBlockedKeyword = async (keyword: string) => {
+    const database = await getDB();
+    const timestamp = Date.now();
+    const normalizedKeyword = keyword.trim().toLowerCase();
+
+    if (!normalizedKeyword) {
+        throw new Error('Keyword cannot be empty');
+    }
+
+    await database.runAsync(
+        'INSERT OR IGNORE INTO blocked_keywords (keyword, created_at) VALUES (?, ?)',
+        [normalizedKeyword, timestamp]
+    );
+};
+
+export const removeBlockedKeyword = async (keyword: string) => {
+    const database = await getDB();
+    const normalizedKeyword = keyword.trim().toLowerCase();
+
+    await database.runAsync(
+        'DELETE FROM blocked_keywords WHERE keyword = ?',
+        [normalizedKeyword]
+    );
+};
+
+export const clearAllBlockedKeywords = async () => {
+    const database = await getDB();
+    await database.runAsync('DELETE FROM blocked_keywords');
+};
+
+export const resetToDefaultBlockedKeywords = async () => {
+    await clearAllBlockedKeywords();
+    // Force re-initialization of default keywords
+    await initDefaultBlockedKeywords(true);
+};
+
+export const getBlockedKeywords = async (): Promise<string[]> => {
+    const database = await getDB();
+    const results = await database.getAllAsync<{ keyword: string }>(
+        'SELECT keyword FROM blocked_keywords ORDER BY created_at ASC'
+    );
+    return results.map(r => r.keyword);
+};
+
+export const containsBlockedKeyword = async (text: string): Promise<boolean> => {
+    if (!text) return false;
+
+    const keywords = await getBlockedKeywords();
+    const normalizedText = text.toLowerCase();
+
+    return keywords.some(keyword => normalizedText.includes(keyword));
+};
+
+// Helper function to filter posts by blocked keywords
+export const filterPostsByKeywords = async (posts: ThreadPost[]): Promise<ThreadPost[]> => {
+    const keywords = await getBlockedKeywords();
+    if (keywords.length === 0) return posts;
+
+    const filtered: ThreadPost[] = [];
+
+    for (const post of posts) {
+        const textToCheck = `${post.sub || ''} ${post.com || ''} ${post.filename || ''}`.toLowerCase();
+        const hasBlockedKeyword = keywords.some(keyword => textToCheck.includes(keyword));
+
+        if (!hasBlockedKeyword) {
+            filtered.push(post);
+        }
+    }
+
+    return filtered;
 };

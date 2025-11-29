@@ -10,7 +10,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, StatusBar } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, StatusBar, BackHandler } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import BoardSelectionView from '../components/BoardSelectionView';
 import FeedView from '../components/FeedView';
@@ -18,7 +18,7 @@ import { getConfig } from '../database/db';
 import { fetchJson } from '../services/proxy';
 import { Board } from '../types';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 
 export default function HomeScreen() {
     const [activeTab, setActiveTab] = useState('ALL');
@@ -55,6 +55,23 @@ export default function HomeScreen() {
 
         return () => clearInterval(interval);
     }, [followEnabled, workSafeEnabled]);
+
+    // Handle Android back button/gesture - only when HomeScreen is focused
+    useFocusEffect(
+        React.useCallback(() => {
+            const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+                if (activeTab !== 'ALL') {
+                    // If not on ALL tab, switch to ALL tab first
+                    setActiveTab('ALL');
+                    return true; // Prevent default back behavior
+                }
+                // If on ALL tab, allow app to exit
+                return false;
+            });
+
+            return () => backHandler.remove();
+        }, [activeTab])
+    );
 
     const loadConfig = async () => {
         const saved = await getConfig('selected_boards');

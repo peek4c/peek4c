@@ -144,7 +144,12 @@ export const getMediaUriWithPriority = async (url: string, isHighPriority: boole
     const existingDownload = activeDownloads.get(url);
     if (existingDownload) {
         console.log(`[Proxy] Reusing existing download ${contextStr}: ${url}`);
-        return existingDownload;
+        try {
+            return await existingDownload;
+        } catch (error) {
+            console.error('[Proxy] Reused download failed:', error);
+            return url;
+        }
     }
 
     // Create a new download promise

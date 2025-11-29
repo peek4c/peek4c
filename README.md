@@ -35,6 +35,21 @@ Peek4c is a third-party 4chan client application built with React Native and Exp
 <!-- Screenshot 3: Me View -->
 ![Me View](./screenshots/me.jpg)
 
+## 📖 User Guide
+
+1. **Password Protection**: Set a password to access the app. Use the Reset function if you forget your password (this will clear all local data)
+2. **Board Selection**: Select up to 3 boards at once. Selecting more will replace the oldest selection
+3. **Content Filter**: Default is worksafe. Uncheck to see NSFW boards (shown in red)
+4. **Follow Tab**: Click the follow checkbox to enable the Follow navigation. Content appears after following OP threads
+5. **Browsing**: Swipe up/down to browse posts. Tap the avatar with + to follow an OP (thread). Tap the avatar to view all posts from that OP
+6. **Image Zoom**: Double tap images to zoom (1x → 2x → 4x → 1x), drag to pan when zoomed
+7. **OP Page Actions**: 
+   - Tap avatar to toggle follow
+   - Long press avatar to toggle block (blocks all posts from this OP)
+8. **Favorites**: Tap the four-leaf clover icon to star/favorite posts
+9. **Me Section**: View Follow, Blocked, Star, and History (supports combined filtering)
+10. **History Management**: Delete browsing history (causes viewed content to reappear) and clear cache
+11. **Privacy**: All data is stored locally. Only 4chan API requests are made. Cached content is available offline
 
 ## ⚖️ Disclaimer
 
@@ -62,12 +77,10 @@ Peek4c is a third-party 4chan client application built with React Native and Exp
 For detailed build instructions, environment setup, and troubleshooting, see **[BUILD_GUIDE.md](BUILD_GUIDE.md)**.
 
 Quick start:
-```powershell
-# Set Java environment (required)
-$env:JAVA_HOME="D:\Dev\jdk-17.0.12"
-$env:Path="$env:JAVA_HOME\bin;$env:Path"
 
-# Build and run
+```powershell
+npm install
+npx expo prebuild --clean
 npx expo run:android
 ```
 

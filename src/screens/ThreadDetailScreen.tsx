@@ -1,11 +1,12 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { View, Text, FlatList, Image, StyleSheet, Dimensions, TouchableOpacity, Modal, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { fetchJson, getMediaUri, clearDownloadQueue } from '../services/proxy';
 import { ThreadPost } from '../types';
 import { Ionicons } from '@expo/vector-icons';
 import ThreadItem from '../components/ThreadItem';
-import { toggleFollow, isFollowing, getViewedPosts, saveThreads, addToHistory, toggleBlock, isBlocked, updateThreadLastFetched } from '../database/db';
+import { toggleFollow, isFollowing, getViewedPosts, saveThreads, addToHistory, toggleBlock, isBlocked, updateThreadLastFetched, getThreadItemsWithHistory } from '../database/db';
 import { followEvents } from '../services/followEvents';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 
@@ -84,7 +85,16 @@ export default function ThreadDetailScreen({ route, navigation }: Props) {
             const viewed = await getViewedPosts(thread.board, thread.no);
             setViewedPosts(viewed);
         } catch (error) {
-            console.error('Failed to load posts:', error);
+            console.log('Failed to load posts from network, attempting local DB:', error);
+            try {
+                const { posts, viewed } = await getThreadItemsWithHistory(thread.no, thread.board);
+                if (posts.length > 0) {
+                    setPosts(posts);
+                    setViewedPosts(viewed);
+                }
+            } catch (dbError) {
+                console.error('Failed to load posts from DB:', dbError);
+            }
         } finally {
             setLoading(false);
         }
@@ -165,7 +175,7 @@ export default function ThreadDetailScreen({ route, navigation }: Props) {
                         <Text style={styles.headerTitle} numberOfLines={1}>
                             {decodeHtml(thread.sub || thread.name || 'Anonymous')}
                         </Text>
-                        <Text style={styles.headerSubtitle}>/{thread.board}/ - {thread.no}</Text>
+                        <Text style={styles.headerSubtitle}>/{thread.board}/ - {thread.no} ({posts.length} posts)</Text>
                         {thread.com ? (
                             <Text style={styles.headerDescription} numberOfLines={3}>
                                 {decodeHtml(thread.com)}
@@ -255,6 +265,7 @@ function GridItem({ item, isViewed, context }: { item: ThreadPost; isViewed: boo
 
 function FullScreenViewer({ posts, initialIndex, onClose, threadId, threadBoard, opThread, context }: { posts: ThreadPost[]; initialIndex: number; onClose: () => void; threadId: number; threadBoard: string; opThread: ThreadPost; context: string }) {
     const [activeIndex, setActiveIndex] = useState(initialIndex);
+    const [scrollEnabled, setScrollEnabled] = useState(true);
     const navigation = useNavigation<any>();
 
     const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
@@ -274,42 +285,50 @@ function FullScreenViewer({ posts, initialIndex, onClose, threadId, threadBoard,
         onClose();
     };
 
+    const handleZoomChange = (isZoomed: boolean) => {
+        setScrollEnabled(!isZoomed);
+    };
+
     return (
         <Modal visible={true} transparent={false} onRequestClose={onClose}>
-            <View style={styles.fullScreenContainer}>
-                <TouchableOpacity style={styles.closeButton} onPress={onClose}>
-                    <Ionicons name="close" size={30} color="#fff" />
-                </TouchableOpacity>
-                <FlatList
-                    data={posts}
-                    keyExtractor={(item) => item.no.toString()}
-                    horizontal={false}
-                    pagingEnabled
-                    initialScrollIndex={initialIndex}
-                    getItemLayout={(data, index) => ({
-                        length: height,
-                        offset: height * index,
-                        index,
-                    })}
-                    onViewableItemsChanged={onViewableItemsChanged}
-                    initialNumToRender={3}
-                    maxToRenderPerBatch={3}
-                    windowSize={5}
-                    renderItem={({ item, index }) => (
-                        <View style={{ width, height }}>
-                            <ThreadItem
-                                thread={item}
-                                isActive={index === activeIndex}
-                                shouldLoad={Math.abs(index - activeIndex) <= 1}
-                                onPressAvatar={handleNavigateToDetail}
-                                threadBoard={threadBoard}
-                                opThread={opThread}
-                                context={context}
-                            />
-                        </View>
-                    )}
-                />
-            </View>
+            <GestureHandlerRootView style={{ flex: 1 }}>
+                <View style={styles.fullScreenContainer}>
+                    <TouchableOpacity style={styles.closeButton} onPress={onClose}>
+                        <Ionicons name="close" size={30} color="#fff" />
+                    </TouchableOpacity>
+                    <FlatList
+                        data={posts}
+                        keyExtractor={(item) => item.no.toString()}
+                        horizontal={false}
+                        pagingEnabled
+                        scrollEnabled={scrollEnabled}
+                        initialScrollIndex={initialIndex}
+                        getItemLayout={(data, index) => ({
+                            length: height,
+                            offset: height * index,
+                            index,
+                        })}
+                        onViewableItemsChanged={onViewableItemsChanged}
+                        initialNumToRender={3}
+                        maxToRenderPerBatch={3}
+                        windowSize={5}
+                        renderItem={({ item, index }) => (
+                            <View style={{ width, height }}>
+                                <ThreadItem
+                                    thread={item}
+                                    isActive={index === activeIndex}
+                                    shouldLoad={Math.abs(index - activeIndex) <= 1}
+                                    onPressAvatar={handleNavigateToDetail}
+                                    threadBoard={threadBoard}
+                                    opThread={opThread}
+                                    context={context}
+                                    onZoomChange={handleZoomChange}
+                                />
+                            </View>
+                        )}
+                    />
+                </View>
+            </GestureHandlerRootView>
         </Modal>
     );
 }
