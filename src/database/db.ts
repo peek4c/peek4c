@@ -964,6 +964,7 @@ const DEFAULT_BLOCKED_KEYWORDS = [
     'trauma',
     'burn',
     'burned',
+    'rekt',
 
     // Disgusting & Filth
     'filth',
@@ -1093,7 +1094,7 @@ export const filterPostsByKeywords = async (posts: ThreadPost[]): Promise<Thread
 
     for (const post of posts) {
         const textToCheck = `${post.sub || ''} ${post.com || ''} ${post.filename || ''}`.toLowerCase();
-        const hasBlockedKeyword = keywords.some(keyword => textToCheck.includes(keyword));
+        const hasBlockedKeyword = keywords.some(keyword => textToCheck.includes(keyword.toLowerCase()));
 
         if (!hasBlockedKeyword) {
             filtered.push(post);

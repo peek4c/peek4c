@@ -10,7 +10,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, StatusBar, BackHandler } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, StatusBar, BackHandler, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import BoardSelectionView from '../components/BoardSelectionView';
 import FeedView from '../components/FeedView';
@@ -26,9 +26,13 @@ export default function HomeScreen() {
     const [boardsData, setBoardsData] = useState<Map<string, Board>>(new Map());
     const [followEnabled, setFollowEnabled] = useState(false);
     const [workSafeEnabled, setWorkSafeEnabled] = useState(true);
+    const [isCleanMode, setIsCleanMode] = useState(false); // Shared Clean Mode state
     const navigation = useNavigation<any>();
+    const { width, height } = useWindowDimensions();
+    const isLandscape = width > height;
 
     useEffect(() => {
+        navigation.setOptions({ headerShown: false });
         loadConfig();
         loadBoardsData();
     }, []);
@@ -139,6 +143,8 @@ export default function HomeScreen() {
                             board="__FOLLOW__"
                             isActiveTab={activeTab === 'FOLLOW'}
                             workSafeEnabled={workSafeEnabled}
+                            isCleanMode={isCleanMode}
+                            onToggleCleanMode={setIsCleanMode}
                         />
                     </View>
                 )}
@@ -148,63 +154,67 @@ export default function HomeScreen() {
                         <FeedView
                             board={board}
                             isActiveTab={activeTab === board}
+                            isCleanMode={isCleanMode}
+                            onToggleCleanMode={setIsCleanMode}
                         />
                     </View>
                 ))}
             </View>
 
             {/* Top Bar Overlay */}
-            <SafeAreaView style={styles.topBar} edges={['top']}>
-                <View style={styles.topBarContent}>
-                    <View style={styles.tabsContainer}>
-                        <View style={styles.tabs}>
-                            <TouchableOpacity
-                                style={[styles.tab, activeTab === 'ALL' && styles.activeTab]}
-                                onPress={() => setActiveTab('ALL')}
-                            >
-                                <Text style={[styles.tabText, activeTab === 'ALL' && styles.activeTabText]}>ALL</Text>
-                            </TouchableOpacity>
-
-                            {followEnabled && (
+            {!isCleanMode && (
+                <SafeAreaView style={styles.topBar} edges={['top']}>
+                    <View style={styles.topBarContent}>
+                        <View style={styles.tabsContainer}>
+                            <View style={styles.tabs}>
                                 <TouchableOpacity
-                                    style={[styles.tab, activeTab === 'FOLLOW' && styles.activeTab]}
-                                    onPress={() => setActiveTab('FOLLOW')}
+                                    style={[styles.tab, activeTab === 'ALL' && styles.activeTab]}
+                                    onPress={() => setActiveTab('ALL')}
                                 >
-                                    <Text style={[styles.tabText, activeTab === 'FOLLOW' && styles.activeTabText]}>Follow</Text>
+                                    <Text style={[styles.tabText, activeTab === 'ALL' && styles.activeTabText]}>ALL</Text>
                                 </TouchableOpacity>
-                            )}
 
-                            {selectedBoards.map(board => {
-                                const boardIsNSFW = isNSFW(board);
-                                const isActive = activeTab === board;
-                                return (
+                                {followEnabled && (
                                     <TouchableOpacity
-                                        key={board}
-                                        style={[
-                                            styles.tab,
-                                            isActive && (boardIsNSFW ? styles.activeTabNSFW : styles.activeTab)
-                                        ]}
-                                        onPress={() => setActiveTab(board)}
+                                        style={[styles.tab, activeTab === 'FOLLOW' && styles.activeTab]}
+                                        onPress={() => setActiveTab('FOLLOW')}
                                     >
-                                        <Text style={[
-                                            styles.tabText,
-                                            boardIsNSFW && styles.tabTextNSFW,
-                                            isActive && styles.activeTabText
-                                        ]}>
-                                            /{board}/
-                                        </Text>
+                                        <Text style={[styles.tabText, activeTab === 'FOLLOW' && styles.activeTabText]}>Follow</Text>
                                     </TouchableOpacity>
-                                );
-                            })}
-                        </View>
-                    </View>
+                                )}
 
-                    {/* Persistent Me Button */}
-                    <TouchableOpacity style={styles.meButton} onPress={() => navigation.navigate('Me')}>
-                        <Text style={styles.meButtonText}>Me</Text>
-                    </TouchableOpacity>
-                </View>
-            </SafeAreaView>
+                                {selectedBoards.map(board => {
+                                    const boardIsNSFW = isNSFW(board);
+                                    const isActive = activeTab === board;
+                                    return (
+                                        <TouchableOpacity
+                                            key={board}
+                                            style={[
+                                                styles.tab,
+                                                isActive && (boardIsNSFW ? styles.activeTabNSFW : styles.activeTab)
+                                            ]}
+                                            onPress={() => setActiveTab(board)}
+                                        >
+                                            <Text style={[
+                                                styles.tabText,
+                                                boardIsNSFW && styles.tabTextNSFW,
+                                                isActive && styles.activeTabText
+                                            ]}>
+                                                /{board}/
+                                            </Text>
+                                        </TouchableOpacity>
+                                    );
+                                })}
+                            </View>
+                        </View>
+
+                        {/* Persistent Me Button */}
+                        <TouchableOpacity style={[styles.meButton, isLandscape && styles.meButtonLandscape]} onPress={() => navigation.navigate('Me')}>
+                            <Text style={styles.meButtonText}>Me</Text>
+                        </TouchableOpacity>
+                    </View>
+                </SafeAreaView>
+            )}
         </View>
     );
 }
@@ -278,6 +288,9 @@ const styles = StyleSheet.create({
         padding: 5,
         position: 'absolute',
         right: 15,
+    },
+    meButtonLandscape: {
+        right: 45,
     },
     meButtonText: {
         color: '#fff',

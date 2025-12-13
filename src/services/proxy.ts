@@ -5,8 +5,8 @@ import { getCachedRequest, saveCachedRequest } from '../database/db';
 const BASE_URL = 'https://a.4cdn.org';
 
 // Priority queue system for media downloads
-const MAX_CONCURRENT_IMAGE_DOWNLOADS = 8;
-const MIN_CONCURRENT_IMAGE_DOWNLOADS = 4;
+const MAX_CONCURRENT_IMAGE_DOWNLOADS = 4;
+const MIN_CONCURRENT_IMAGE_DOWNLOADS = 1;
 
 let activeImageDownloadsCount = 0;
 let activeHighPriorityDownloadsCount = 0;
@@ -29,8 +29,10 @@ const isImage = (url: string): boolean => {
 };
 
 const getDynamicImageLimit = () => {
-    const available = MAX_CONCURRENT_IMAGE_DOWNLOADS - activeHighPriorityDownloadsCount;
-    return Math.max(MIN_CONCURRENT_IMAGE_DOWNLOADS, available);
+    if (activeHighPriorityDownloadsCount > 0) {
+        return MIN_CONCURRENT_IMAGE_DOWNLOADS;
+    }
+    return MAX_CONCURRENT_IMAGE_DOWNLOADS;
 };
 
 const processImageQueue = () => {

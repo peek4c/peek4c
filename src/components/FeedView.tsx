@@ -1,32 +1,36 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { View, FlatList, Dimensions, ActivityIndicator, StyleSheet, Text } from 'react-native';
+import { View, ActivityIndicator, StyleSheet, Text, useWindowDimensions } from 'react-native';
+import PagerView from 'react-native-pager-view';
 import { fetchJson } from '../services/proxy';
 import { ThreadPost, Thread } from '../types';
 import ThreadItem from './ThreadItem';
 import { addToHistory, getRecommendedItems, saveThreads, isThreadFullyLoaded, getHistoryNos, updateThreadLastFetched, getFollowedUnreadThreads, getFollowing, getFollowedThreadsNeedingUpdate } from '../database/db';
 import { filterPostsByKeywords } from '../database/db';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { rateLimiter } from '../services/rateLimiter';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { runOnJS } from 'react-native-reanimated';
-
-const { height } = Dimensions.get('window');
 
 interface Props {
     board: string;
     isActiveTab: boolean;
     workSafeEnabled?: boolean;
+    isCleanMode?: boolean;
+    onToggleCleanMode?: (isClean: boolean) => void;
 }
 
-export default function FeedView({ board, isActiveTab, workSafeEnabled = false }: Props) {
+export default function FeedView({ board, isActiveTab, workSafeEnabled = false, isCleanMode = false, onToggleCleanMode }: Props) {
     const [threads, setThreads] = useState<ThreadPost[]>([]);
     const [loading, setLoading] = useState(true);
     const [activeIndex, setActiveIndex] = useState(0);
     const [preloadWindow, setPreloadWindow] = useState(2);
     const [emptyMessage, setEmptyMessage] = useState<string | null>(null);
-    const [containerHeight, setContainerHeight] = useState(Dimensions.get('window').height);
+    const { height: screenHeight, width: screenWidth } = useWindowDimensions();
+    const pagerRef = useRef<PagerView>(null);
+
 
     const navigation = useNavigation<any>();
+    const isFocused = useIsFocused();
 
     // Pagination state
     const [excludeIds, setExcludeIds] = useState<number[]>([]);
@@ -51,6 +55,13 @@ export default function FeedView({ board, isActiveTab, workSafeEnabled = false }
             loadInitialData();
         }
     }, [isActiveTab]);
+
+    // Cleanup Clean Mode when switching tabs
+    useEffect(() => {
+        if (!isActiveTab && isCleanMode && onToggleCleanMode) {
+            onToggleCleanMode(false);
+        }
+    }, [isActiveTab, isCleanMode, onToggleCleanMode]);
 
     const updateFollowedThreadsInBackground = async () => {
         try {
@@ -236,6 +247,37 @@ export default function FeedView({ board, isActiveTab, workSafeEnabled = false }
         }
     };
 
+    const handlePageSelected = (e: any) => {
+        const newIndex = e.nativeEvent.position;
+        setActiveIndex(newIndex);
+
+        setPreloadWindow(2); // Keep preload window small and fixed to prevent OOM
+
+        // Add to history
+        const item = threads[newIndex];
+        if (item) {
+            if (item.tim && item.ext) {
+                addToHistory(item);
+            }
+
+            // Lazy Load Logic: If it's an OP and not fully loaded, add to queue
+            if (item.resto === 0) {
+                isThreadFullyLoaded(item.no, board).then(loaded => {
+                    if (!loaded && !fetchQueue.current.has(item.no)) {
+                        console.log(`[FeedView] Queueing thread ${item.no} for fetch`);
+                        fetchQueue.current.add(item.no);
+                        processQueue();
+                    }
+                });
+            }
+        }
+
+        // Load more when approaching end
+        if (newIndex >= threads.length - 3 && hasMore && !loading) {
+            handleEndReached();
+        }
+    };
+
     const handleEndReached = async () => {
         if (loading || !hasMore) return;
 
@@ -272,34 +314,6 @@ export default function FeedView({ board, isActiveTab, workSafeEnabled = false }
         loadMoreFromDB(excludeIds);
     };
 
-    const onViewableItemsChanged = useCallback(({ viewableItems }: any) => {
-        if (viewableItems.length > 0) {
-            const index = viewableItems[0].index;
-            setActiveIndex(index);
-
-            setPreloadWindow(2); // Keep preload window small and fixed to prevent OOM
-
-            // Add to history
-            const item = threads[index];
-            if (item) {
-                if (item.tim && item.ext) {
-                    addToHistory(item);
-                }
-
-                // Lazy Load Logic: If it's an OP and not fully loaded, add to queue
-                if (item.resto === 0) {
-                    isThreadFullyLoaded(item.no, board).then(loaded => {
-                        if (!loaded && !fetchQueue.current.has(item.no)) {
-                            console.log(`[FeedView] Queueing thread ${item.no} for fetch`);
-                            fetchQueue.current.add(item.no);
-                            processQueue();
-                        }
-                    });
-                }
-            }
-        }
-    }, [threads, board]);
-
     const handleNavigateToDetail = (thread: ThreadPost) => {
         const threadToPass = thread.opThread || thread;
         navigation.navigate('ThreadDetail', { thread: threadToPass });
@@ -323,38 +337,48 @@ export default function FeedView({ board, isActiveTab, workSafeEnabled = false }
     }
 
     return (
-        <View style={styles.container} onLayout={(e) => setContainerHeight(e.nativeEvent.layout.height)}>
-            <FlatList
-                data={threads}
-                keyExtractor={(item) => `${item.board}-${item.no}`}
-                renderItem={({ item, index }) => (
-                    <FeedItemWrapper
-                        thread={item}
-                        opThread={item.opThread || item}
-                        isActive={index === activeIndex && isActiveTab}
-                        shouldLoad={Math.abs(index - activeIndex) <= preloadWindow}
-                        onNavigate={() => handleNavigateToDetail(item)}
-                        itemHeight={containerHeight}
-                    />
-                )}
-                pagingEnabled
-                showsVerticalScrollIndicator={false}
-                snapToInterval={containerHeight}
-                decelerationRate="fast"
-                onViewableItemsChanged={onViewableItemsChanged}
-                viewabilityConfig={{ itemVisiblePercentThreshold: 50 }}
-                initialNumToRender={3}
-                maxToRenderPerBatch={3}
-                windowSize={5}
-                onEndReached={handleEndReached}
-                onEndReachedThreshold={0.5}
-                removeClippedSubviews={true}
-            />
+        <View style={styles.container}>
+            <PagerView
+                ref={pagerRef}
+                style={styles.pager}
+                initialPage={0}
+                orientation="vertical"
+                onPageSelected={handlePageSelected}
+                overdrag={true}
+            >
+                {threads.map((item, index) => {
+                    // Lazy rendering: only render items within a reasonable range
+                    // This prevents memory accumulation during long browsing sessions
+                    const RENDER_WINDOW = 5; // Render current ±5 items (11 total)
+                    const shouldRender = Math.abs(index - activeIndex) <= RENDER_WINDOW;
+
+                    return (
+                        <View key={`${item.board}-${item.no}`} style={styles.page}>
+                            {shouldRender ? (
+                                <FeedItemWrapper
+                                    thread={item}
+                                    opThread={item.opThread || item}
+                                    isActive={index === activeIndex && isActiveTab && isFocused}
+                                    shouldLoad={Math.abs(index - activeIndex) <= preloadWindow}
+                                    onNavigate={() => handleNavigateToDetail(item)}
+                                    itemHeight={screenHeight}
+                                    itemWidth={screenWidth}
+                                    isCleanMode={isCleanMode}
+                                    onToggleCleanMode={onToggleCleanMode || (() => { })}
+
+                                />
+                            ) : (
+                                <View style={{ width: screenWidth, height: screenHeight, backgroundColor: '#000' }} />
+                            )}
+                        </View>
+                    );
+                })}
+            </PagerView>
         </View>
     );
 }
 
-function FeedItemWrapper({ thread, opThread, isActive, shouldLoad, onNavigate, itemHeight }: { thread: ThreadPost; opThread: ThreadPost; isActive: boolean; shouldLoad: boolean; onNavigate: () => void; itemHeight: number }) {
+function FeedItemWrapper({ thread, opThread, isActive, shouldLoad, onNavigate, itemHeight, itemWidth, isCleanMode, onToggleCleanMode }: { thread: ThreadPost; opThread: ThreadPost; isActive: boolean; shouldLoad: boolean; onNavigate: () => void; itemHeight: number; itemWidth: number; isCleanMode: boolean; onToggleCleanMode: (isClean: boolean) => void }) {
     // Use react-native-gesture-handler for consistent gesture handling
     const panGesture = Gesture.Pan()
         .activeOffsetX(-20) // Only activate when swiping left at least 20px
@@ -370,7 +394,7 @@ function FeedItemWrapper({ thread, opThread, isActive, shouldLoad, onNavigate, i
 
     return (
         <GestureDetector gesture={panGesture}>
-            <View style={{ width: Dimensions.get('window').width, height: itemHeight }}>
+            <View style={{ width: itemWidth, height: itemHeight }}>
                 <ThreadItem
                     thread={thread}
                     opThread={opThread}
@@ -378,6 +402,9 @@ function FeedItemWrapper({ thread, opThread, isActive, shouldLoad, onNavigate, i
                     shouldLoad={shouldLoad}
                     shouldLoadVideo={isActive} // Only load video for the active item to prevent OOM
                     onPressAvatar={onNavigate}
+                    isCleanMode={isCleanMode}
+                    onToggleCleanMode={onToggleCleanMode}
+
                 />
             </View>
         </GestureDetector>
@@ -388,6 +415,12 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: '#000',
+    },
+    pager: {
+        flex: 1,
+    },
+    page: {
+        flex: 1,
     },
     center: {
         flex: 1,

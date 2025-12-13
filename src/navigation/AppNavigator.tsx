@@ -10,8 +10,8 @@
  */
 
 import React from 'react';
-import { createStackNavigator } from '@react-navigation/stack';
-import { NavigationContainer } from '@react-navigation/native';
+import { createStackNavigator, CardStyleInterpolators } from '@react-navigation/stack';
+import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import DisclaimerScreen from '../screens/DisclaimerScreen';
 import LoginScreen from '../screens/LoginScreen';
 import SetPasswordScreen from '../screens/SetPasswordScreen';
@@ -27,10 +27,29 @@ interface Props {
     initialRoute: string;
 }
 
+// 自定义暗色主题，确保背景为黑色
+const CustomDarkTheme = {
+    ...DarkTheme,
+    colors: {
+        ...DarkTheme.colors,
+        background: '#000',
+        card: '#000',
+        primary: '#ff0050',
+    },
+};
+
 export default function AppNavigator({ initialRoute }: Props) {
     return (
-        <NavigationContainer>
-            <Stack.Navigator initialRouteName={initialRoute} screenOptions={{ headerShown: false }}>
+        <NavigationContainer theme={CustomDarkTheme}>
+            <Stack.Navigator
+                initialRouteName={initialRoute}
+                screenOptions={{
+                    headerShown: false,
+                    cardStyle: { backgroundColor: '#000' },
+                    // 使用从右侧滑入的过渡动画，更流畅
+                    cardStyleInterpolator: CardStyleInterpolators.forHorizontalIOS,
+                }}
+            >
                 <Stack.Screen name="Disclaimer" component={DisclaimerScreen} />
                 <Stack.Screen name="Login" component={LoginScreen} />
                 <Stack.Screen name="SetPassword" component={SetPasswordScreen} />

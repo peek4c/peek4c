@@ -1,14 +1,13 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { View, FlatList, Dimensions, StyleSheet, PanResponder } from 'react-native';
+import { View, StyleSheet, useWindowDimensions } from 'react-native';
+import PagerView from 'react-native-pager-view';
 import { ThreadPost } from '../types';
 import ThreadItem from '../components/ThreadItem';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-
-const { height, width } = Dimensions.get('window');
+import * as ScreenOrientation from 'expo-screen-orientation';
 
 interface Props {
-    route: {
+    route?: {
         params: {
             threads: ThreadPost[];
             initialIndex: number;
@@ -16,31 +15,28 @@ interface Props {
     };
 }
 
-
-
 export default function MediaListScreen({ route }: Props) {
-    const { threads, initialIndex } = route.params;
+    const { threads, initialIndex } = route?.params || { threads: [], initialIndex: 0 };
     const [data, setData] = useState<ThreadPost[]>([]);
     const [activeIndex, setActiveIndex] = useState(0);
     const navigation = useNavigation<any>();
-    const flatListRef = useRef<FlatList>(null);
+    const pagerRef = useRef<PagerView>(null);
+    const { height: screenHeight, width: screenWidth } = useWindowDimensions();
 
     useEffect(() => {
         setData(threads);
         setActiveIndex(initialIndex);
 
-        // Scroll to initial index
+        // Set initial page
         setTimeout(() => {
-            flatListRef.current?.scrollToIndex({ index: initialIndex, animated: false });
+            pagerRef.current?.setPage(initialIndex);
         }, 100);
     }, []);
 
-    const onViewableItemsChanged = useCallback(({ viewableItems }: any) => {
-        if (viewableItems.length > 0) {
-            const index = viewableItems[0].index;
-            setActiveIndex(index);
-        }
-    }, []);
+    const handlePageSelected = (e: any) => {
+        const newIndex = e.nativeEvent.position;
+        setActiveIndex(newIndex);
+    };
 
     const handleNavigateToDetail = (item: ThreadPost) => {
         if (!item) return;
@@ -65,55 +61,44 @@ export default function MediaListScreen({ route }: Props) {
         navigation.navigate('ThreadDetail', { thread: targetThread });
     };
 
+    // Check if an item should be rendered (only render current + adjacent items)
+    const shouldRenderItem = (index: number) => {
+        return Math.abs(index - activeIndex) <= 1; // Only render current and ±1 items
+    };
+
     return (
         <View style={styles.container}>
-            <FlatList
-                ref={flatListRef}
-                data={data}
-                keyExtractor={(item, index) => `${item.no}-${index}`}
-                renderItem={({ item, index }) => (
-                    <FeedItemWrapper
-                        item={item}
-                        isActive={index === activeIndex}
-                        onNavigate={() => handleNavigateToDetail(item)}
-                    />
-                )}
-                pagingEnabled
-                showsVerticalScrollIndicator={false}
-                snapToInterval={height}
-                decelerationRate="fast"
-                onViewableItemsChanged={onViewableItemsChanged}
-                viewabilityConfig={{ itemVisiblePercentThreshold: 50 }}
-                initialNumToRender={3}
-                maxToRenderPerBatch={3}
-                windowSize={5}
-                getItemLayout={(data, index) => ({
-                    length: height,
-                    offset: height * index,
-                    index,
-                })}
-            />
+            <PagerView
+                ref={pagerRef}
+                style={styles.pager}
+                initialPage={initialIndex}
+                orientation="vertical"
+                onPageSelected={handlePageSelected}
+                overdrag={true}
+            >
+                {data.map((item, index) => (
+                    <View key={`${item.no}-${index}`} style={styles.page}>
+                        {shouldRenderItem(index) ? (
+                            <FeedItemWrapper
+                                item={item}
+                                isActive={index === activeIndex}
+                                onNavigate={() => handleNavigateToDetail(item)}
+                                itemHeight={screenHeight}
+                                itemWidth={screenWidth}
+                            />
+                        ) : (
+                            <View style={{ width: screenWidth, height: screenHeight, backgroundColor: '#000' }} />
+                        )}
+                    </View>
+                ))}
+            </PagerView>
         </View>
     );
 }
 
-function FeedItemWrapper({ item, isActive, onNavigate }: { item: ThreadPost; isActive: boolean; onNavigate: () => void }) {
-    const panResponder = useRef(
-        PanResponder.create({
-            onMoveShouldSetPanResponder: (_, gestureState) => {
-                // Activate on swipe left (dx < -20)
-                return gestureState.dx < -20 && Math.abs(gestureState.dy) < 20;
-            },
-            onPanResponderRelease: (_, gestureState) => {
-                if (gestureState.dx < -50) {
-                    onNavigate();
-                }
-            }
-        })
-    ).current;
-
+function FeedItemWrapper({ item, isActive, onNavigate, itemHeight, itemWidth }: { item: ThreadPost; isActive: boolean; onNavigate: () => void; itemHeight: number; itemWidth: number }) {
     return (
-        <View style={{ width, height }} {...panResponder.panHandlers}>
+        <View style={{ width: itemWidth, height: itemHeight }}>
             <ThreadItem
                 thread={item}
                 isActive={isActive}
@@ -128,5 +113,11 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: '#000',
+    },
+    pager: {
+        flex: 1,
+    },
+    page: {
+        flex: 1,
     },
 });

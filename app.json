@@ -2,8 +2,8 @@
   "expo": {
     "name": "Peek4c",
     "slug": "peek 4 real",
-    "version": "1.0.0",
-    "orientation": "portrait",
+    "version": "1.1.0",
+    "orientation": "default",
     "icon": "./assets/adaptive-icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
@@ -37,6 +37,7 @@
     "plugins": [
       "expo-sqlite",
       "expo-secure-store",
+      "expo-screen-orientation",
       [
         "expo-media-library",
         {

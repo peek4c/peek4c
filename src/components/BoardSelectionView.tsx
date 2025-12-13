@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { fetchJson } from '../services/proxy';
 import { Board } from '../types';
 import { getConfig, setConfig, saveBoards } from '../database/db';
@@ -15,6 +15,9 @@ export default function BoardSelectionView({ onSelectionChange }: Props) {
     const [loading, setLoading] = useState(true);
     const [workSafeEnabled, setWorkSafeEnabled] = useState(true);
     const [followEnabled, setFollowEnabled] = useState(false);
+    const { width, height } = useWindowDimensions();
+    const isLandscape = width > height;
+    const numColumns = isLandscape ? 6 : 3;
 
     useEffect(() => {
         loadData();
@@ -148,9 +151,10 @@ export default function BoardSelectionView({ onSelectionChange }: Props) {
             </View>
 
             <FlatList
+                key={`boards-${numColumns}`}
                 data={displayBoards}
                 keyExtractor={(item) => item.board}
-                numColumns={3}
+                numColumns={numColumns}
                 renderItem={({ item }) => {
                     const isSelected = selected.includes(item.board);
                     const isNSFW = item.ws_board === 0; // ws_board: 0 = NSFW, 1 = Work Safe

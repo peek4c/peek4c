@@ -1,7 +1,9 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, FlatList, Image, StyleSheet, Dimensions, TouchableOpacity, Modal, ActivityIndicator } from 'react-native';
+import { View, Text, FlatList, Image, StyleSheet, Dimensions, TouchableOpacity, ActivityIndicator, BackHandler, useWindowDimensions } from 'react-native';
+import PagerView from 'react-native-pager-view';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import * as ScreenOrientation from 'expo-screen-orientation';
+
 import { fetchJson, getMediaUri, clearDownloadQueue } from '../services/proxy';
 import { ThreadPost } from '../types';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,21 +12,19 @@ import { toggleFollow, isFollowing, getViewedPosts, saveThreads, addToHistory, t
 import { followEvents } from '../services/followEvents';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 
-const { width, height } = Dimensions.get('window');
-const COLUMN_COUNT = 3;
-const ITEM_SIZE = width / COLUMN_COUNT;
+const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 interface Props {
-    route: {
+    route?: {
         params: {
             thread: ThreadPost;
         };
     };
-    navigation: any;
+    navigation?: any;
 }
 
 export default function ThreadDetailScreen({ route, navigation }: Props) {
-    const { thread } = route.params;
+    const { thread } = route?.params || { thread: {} as ThreadPost };
     const [posts, setPosts] = useState<ThreadPost[]>([]);
     const [loading, setLoading] = useState(true);
     const [fullScreenIndex, setFullScreenIndex] = useState<number | null>(null);
@@ -32,6 +32,10 @@ export default function ThreadDetailScreen({ route, navigation }: Props) {
     const [isBlockedThread, setIsBlockedThread] = useState(false);
     const [headerImageUri, setHeaderImageUri] = useState<string | null>(null);
     const [viewedPosts, setViewedPosts] = useState<Set<number>>(new Set());
+    const { width, height } = useWindowDimensions();
+    const isLandscape = width > height;
+    const COLUMN_COUNT = isLandscape ? 6 : 3;
+    const ITEM_SIZE = width / COLUMN_COUNT;
 
     // Unique context for this thread's downloads
     const downloadContext = `thread_${thread.no}`;
@@ -113,6 +117,7 @@ export default function ThreadDetailScreen({ route, navigation }: Props) {
     const handleFollow = async () => {
         const newStatus = await toggleFollow(thread);
         setIsFollowingThread(newStatus);
+        followEvents.notifyFollowChanged(thread.no, thread.board, newStatus);
     };
 
     const handleBlock = async () => {
@@ -151,59 +156,62 @@ export default function ThreadDetailScreen({ route, navigation }: Props) {
     }
 
     return (
-        <SafeAreaView style={styles.container}>
-            <View style={styles.header}>
-                <View style={styles.headerContent}>
-                    <View style={styles.avatarColumn}>
-                        <TouchableOpacity onPress={handleFollow} onLongPress={handleBlock} delayLongPress={500}>
-                            {headerImageUri ? (
-                                <Image
-                                    source={{ uri: headerImageUri }}
-                                    style={[styles.headerImage, isFollowingThread && styles.avatarFollowing]}
-                                />
-                            ) : (
-                                <View style={[styles.headerImage, styles.placeholder, isFollowingThread && styles.avatarFollowing]} />
-                            )}
-                            {isBlockedThread && (
-                                <View style={styles.blockedOverlay}>
-                                    <Ionicons name="ban" size={40} color="red" />
-                                </View>
-                            )}
-                        </TouchableOpacity>
-                    </View>
-                    <View style={styles.headerText}>
-                        <Text style={styles.headerTitle} numberOfLines={1}>
-                            {decodeHtml(thread.sub || thread.name || 'Anonymous')}
-                        </Text>
-                        <Text style={styles.headerSubtitle}>/{thread.board}/ - {thread.no} ({posts.length} posts)</Text>
-                        {thread.com ? (
-                            <Text style={styles.headerDescription} numberOfLines={3}>
-                                {decodeHtml(thread.com)}
+        <View style={styles.container}>
+            <SafeAreaView style={styles.contentContainer}>
+                <View style={styles.header}>
+                    <View style={styles.headerContent}>
+                        <View style={styles.avatarColumn}>
+                            <TouchableOpacity onPress={handleFollow} onLongPress={handleBlock} delayLongPress={500}>
+                                {headerImageUri ? (
+                                    <Image
+                                        source={{ uri: headerImageUri }}
+                                        style={[styles.headerImage, isFollowingThread && styles.avatarFollowing]}
+                                    />
+                                ) : (
+                                    <View style={[styles.headerImage, styles.placeholder, isFollowingThread && styles.avatarFollowing]} />
+                                )}
+                                {isBlockedThread && (
+                                    <View style={styles.blockedOverlay}>
+                                        <Ionicons name="ban" size={40} color="red" />
+                                    </View>
+                                )}
+                            </TouchableOpacity>
+                        </View>
+                        <View style={styles.headerText}>
+                            <Text style={styles.headerTitle} numberOfLines={1}>
+                                {decodeHtml(thread.sub || thread.name || 'Anonymous')}
                             </Text>
-                        ) : null}
+                            <Text style={styles.headerSubtitle}>/{thread.board}/ - {thread.no} ({posts.length} posts)</Text>
+                            {thread.com ? (
+                                <Text style={styles.headerDescription} numberOfLines={3}>
+                                    {decodeHtml(thread.com)}
+                                </Text>
+                            ) : null}
+                        </View>
                     </View>
                 </View>
-            </View>
 
-            <FlatList
-                style={styles.list}
-                data={posts}
-                keyExtractor={(item) => item.no.toString()}
-                numColumns={COLUMN_COUNT}
-                initialNumToRender={15}
-                windowSize={3}
-                maxToRenderPerBatch={6}
-                updateCellsBatchingPeriod={50}
-                removeClippedSubviews={true}
-                renderItem={({ item, index }) => (
-                    <TouchableOpacity
-                        style={styles.gridItem}
-                        onPress={() => setFullScreenIndex(index)}
-                    >
-                        <GridItem item={item} isViewed={viewedPosts.has(item.no)} context={downloadContext} />
-                    </TouchableOpacity>
-                )}
-            />
+                <FlatList
+                    key={`grid-${COLUMN_COUNT}`}
+                    style={styles.list}
+                    data={posts}
+                    keyExtractor={(item) => item.no.toString()}
+                    numColumns={COLUMN_COUNT}
+                    initialNumToRender={15}
+                    windowSize={3}
+                    maxToRenderPerBatch={6}
+                    updateCellsBatchingPeriod={50}
+                    removeClippedSubviews={true}
+                    renderItem={({ item, index }) => (
+                        <TouchableOpacity
+                            style={[styles.gridItem, { width: ITEM_SIZE, height: ITEM_SIZE }]}
+                            onPress={() => setFullScreenIndex(index)}
+                        >
+                            <GridItem item={item} isViewed={viewedPosts.has(item.no)} context={downloadContext} />
+                        </TouchableOpacity>
+                    )}
+                />
+            </SafeAreaView>
 
             {fullScreenIndex !== null && (
                 <FullScreenViewer
@@ -221,7 +229,7 @@ export default function ThreadDetailScreen({ route, navigation }: Props) {
                     context={downloadContext}
                 />
             )}
-        </SafeAreaView>
+        </View>
     );
 }
 
@@ -266,20 +274,42 @@ function GridItem({ item, isViewed, context }: { item: ThreadPost; isViewed: boo
 function FullScreenViewer({ posts, initialIndex, onClose, threadId, threadBoard, opThread, context }: { posts: ThreadPost[]; initialIndex: number; onClose: () => void; threadId: number; threadBoard: string; opThread: ThreadPost; context: string }) {
     const [activeIndex, setActiveIndex] = useState(initialIndex);
     const [scrollEnabled, setScrollEnabled] = useState(true);
+    const [isCleanMode, setIsCleanMode] = useState(false);
     const navigation = useNavigation<any>();
+    const pagerRef = useRef<any>(null);
+    const { height: screenHeight, width: screenWidth } = useWindowDimensions();
 
-    const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
-        if (viewableItems.length > 0) {
-            const index = viewableItems[0].index;
-            setActiveIndex(index);
+    useEffect(() => {
+        const backAction = () => {
+            onClose();
+            return true;
+        };
 
-            // Add to history - similar to FeedView
-            const item = posts[index];
-            if (item && item.tim && item.ext) {
-                addToHistory(item);
-            }
+        const backHandler = BackHandler.addEventListener(
+            'hardwareBackPress',
+            backAction
+        );
+
+        return () => backHandler.remove();
+    }, [onClose]);
+
+    useEffect(() => {
+        // Set initial page
+        setTimeout(() => {
+            pagerRef.current?.setPage(initialIndex);
+        }, 100);
+    }, []);
+
+    const handlePageSelected = (e: any) => {
+        const index = e.nativeEvent.position;
+        setActiveIndex(index);
+
+        // Add to history - similar to FeedView
+        const item = posts[index];
+        if (item && item.tim && item.ext) {
+            addToHistory(item);
         }
-    }).current;
+    };
 
     const handleNavigateToDetail = () => {
         onClose();
@@ -290,46 +320,50 @@ function FullScreenViewer({ posts, initialIndex, onClose, threadId, threadBoard,
     };
 
     return (
-        <Modal visible={true} transparent={false} onRequestClose={onClose}>
-            <GestureHandlerRootView style={{ flex: 1 }}>
-                <View style={styles.fullScreenContainer}>
-                    <TouchableOpacity style={styles.closeButton} onPress={onClose}>
-                        <Ionicons name="close" size={30} color="#fff" />
-                    </TouchableOpacity>
-                    <FlatList
-                        data={posts}
-                        keyExtractor={(item) => item.no.toString()}
-                        horizontal={false}
-                        pagingEnabled
-                        scrollEnabled={scrollEnabled}
-                        initialScrollIndex={initialIndex}
-                        getItemLayout={(data, index) => ({
-                            length: height,
-                            offset: height * index,
-                            index,
-                        })}
-                        onViewableItemsChanged={onViewableItemsChanged}
-                        initialNumToRender={3}
-                        maxToRenderPerBatch={3}
-                        windowSize={5}
-                        renderItem={({ item, index }) => (
-                            <View style={{ width, height }}>
-                                <ThreadItem
-                                    thread={item}
-                                    isActive={index === activeIndex}
-                                    shouldLoad={Math.abs(index - activeIndex) <= 1}
-                                    onPressAvatar={handleNavigateToDetail}
-                                    threadBoard={threadBoard}
-                                    opThread={opThread}
-                                    context={context}
-                                    onZoomChange={handleZoomChange}
-                                />
+        <View style={styles.fullScreenWrapper}>
+            <View style={styles.fullScreenContainer}>
+                <TouchableOpacity style={styles.closeButton} onPress={onClose}>
+                    <Ionicons name="close" size={30} color="#fff" />
+                </TouchableOpacity>
+                <PagerView
+                    ref={pagerRef}
+                    style={{ flex: 1 }}
+                    initialPage={initialIndex}
+                    orientation="vertical"
+                    onPageSelected={handlePageSelected}
+                    scrollEnabled={scrollEnabled}
+                    overdrag={true}
+                >
+                    {posts.map((item, index) => {
+                        // Only render current item and adjacent items to prevent OOM
+                        const shouldRender = Math.abs(index - activeIndex) <= 1;
+
+                        return (
+                            <View key={item.no.toString()} style={styles.page}>
+                                {shouldRender ? (
+                                    <View style={{ width: screenWidth, height: screenHeight }}>
+                                        <ThreadItem
+                                            thread={item}
+                                            isActive={index === activeIndex}
+                                            shouldLoad={Math.abs(index - activeIndex) <= 1}
+                                            onPressAvatar={handleNavigateToDetail}
+                                            threadBoard={threadBoard}
+                                            opThread={opThread}
+                                            context={context}
+                                            onZoomChange={handleZoomChange}
+                                            isCleanMode={isCleanMode}
+                                            onToggleCleanMode={setIsCleanMode}
+                                        />
+                                    </View>
+                                ) : (
+                                    <View style={{ width: screenWidth, height: screenHeight, backgroundColor: '#000' }} />
+                                )}
                             </View>
-                        )}
-                    />
-                </View>
-            </GestureHandlerRootView>
-        </Modal>
+                        );
+                    })}
+                </PagerView>
+            </View>
+        </View>
     );
 }
 
@@ -337,6 +371,9 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: '#000',
+    },
+    contentContainer: {
+        flex: 1,
     },
     center: {
         flex: 1,
@@ -402,8 +439,6 @@ const styles = StyleSheet.create({
         borderRadius: 50,
     },
     gridItem: {
-        width: ITEM_SIZE,
-        height: ITEM_SIZE,
         padding: 1,
     },
     imageContainer: {
@@ -442,6 +477,14 @@ const styles = StyleSheet.create({
         borderRadius: 10,
         padding: 2,
     },
+    fullScreenWrapper: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 9999, // Ensure it covers everything
+    },
     fullScreenContainer: {
         flex: 1,
         backgroundColor: '#000',
@@ -456,6 +499,9 @@ const styles = StyleSheet.create({
         padding: 5,
     },
     list: {
+        flex: 1,
+    },
+    page: {
         flex: 1,
     },
 });

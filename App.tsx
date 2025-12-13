@@ -17,15 +17,23 @@ import { hasPassword } from './src/services/auth';
 import AppNavigator from './src/navigation/AppNavigator';
 import { StatusBar } from 'expo-status-bar';
 import { MuteProvider } from './src/context/MuteContext';
+import { BlurView } from 'expo-blur';
+import { useAppState } from './src/hooks/useAppState';
+import * as ScreenOrientation from 'expo-screen-orientation';
 
 export default function App() {
   const [ready, setReady] = useState(false);
   const [initialRoute, setInitialRoute] = useState('Login');
+  const isBackground = useAppState();
 
   useEffect(() => {
     const prepare = async () => {
       try {
         console.log('[App] Starting initialization...');
+        
+        // Enable screen rotation for all screens
+        await ScreenOrientation.unlockAsync();
+        
         await initDB();
         console.log('[App] Database initialized');
 
@@ -68,6 +76,21 @@ export default function App() {
       <MuteProvider>
         <StatusBar style="light" />
         <AppNavigator initialRoute={initialRoute} />
+        {isBackground && (
+          <BlurView
+            intensity={90}
+            tint="dark"
+            experimentalBlurMethod="dimezisBlurView"
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: 9999,
+            }}
+          />
+        )}
       </MuteProvider>
     </GestureHandlerRootView>
   );

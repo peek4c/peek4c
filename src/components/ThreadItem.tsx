@@ -1,19 +1,27 @@
+// Force trigger update
 import React, { useEffect, useState, useRef, useMemo } from 'react';
-import { View, Text, Image, StyleSheet, Dimensions, TouchableOpacity, TouchableWithoutFeedback, Linking, Alert, Modal, ActivityIndicator } from 'react-native';
+import { View, Text, Image, StyleSheet, Dimensions, TouchableOpacity, TouchableWithoutFeedback, Linking, Alert, Modal, ActivityIndicator, BackHandler } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as MediaLibrary from 'expo-media-library';
 import { useVideoPlayer, VideoView } from 'expo-video';
+
+import { useWindowDimensions } from 'react-native';
 import { ThreadPost } from '../types';
-import { getMediaUri, getMediaUriWithPriority } from '../services/proxy';
+import { getMediaUriWithPriority } from '../services/proxy';
 import { toggleStar, isStarred, toggleFollow, isFollowing } from '../database/db';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useMute } from '../context/MuteContext';
 import { followEvents } from '../services/followEvents';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { useSharedValue, useAnimatedStyle, withTiming, runOnJS } from 'react-native-reanimated';
+import Animated, { useSharedValue, useAnimatedStyle, withTiming, withSpring, runOnJS, Easing } from 'react-native-reanimated';
+import { useAppState } from '../hooks/useAppState';
 
-const { width, height } = Dimensions.get('window');
+// Create animated VideoView component
+const AnimatedVideoView = Animated.createAnimatedComponent(VideoView);
+
+// Removed global dimensions to support rotation
+// const { width, height } = Dimensions.get('window');
 
 interface Props {
     thread: ThreadPost;
@@ -26,9 +34,12 @@ interface Props {
     context?: string;
     onZoomChange?: (isZoomed: boolean) => void; // Callback when zoom state changes
     shouldLoadVideo?: boolean;
+    onToggleCleanMode?: (isCleanMode: boolean) => void;
+    isCleanMode?: boolean;
+
 }
 
-export default function ThreadItem({ thread, isActive, onPressAvatar, isActiveTab = true, shouldLoad = true, threadBoard, opThread, context, onZoomChange, shouldLoadVideo }: Props) {
+export default function ThreadItem({ thread, isActive, onPressAvatar, isActiveTab = true, shouldLoad = true, threadBoard, opThread, context, onZoomChange, shouldLoadVideo, onToggleCleanMode, isCleanMode = false }: Props) {
     const [imageUri, setImageUri] = useState<string | null>(null);
     const [thumbnailUri, setThumbnailUri] = useState<string | null>(null);
     const [avatarUri, setAvatarUri] = useState<string | null>(null);
@@ -37,6 +48,7 @@ export default function ThreadItem({ thread, isActive, onPressAvatar, isActiveTa
     const [isVideoLoading, setIsVideoLoading] = useState(true);
     const navigation = useNavigation<any>();
     const { isMuted, toggleMute } = useMute();
+    const isBackground = useAppState();
 
     const [isPlaying, setIsPlaying] = useState(false);
     const [duration, setDuration] = useState(0);
@@ -46,8 +58,53 @@ export default function ThreadItem({ thread, isActive, onPressAvatar, isActiveTa
     const [menuVisible, setMenuVisible] = useState(false);
     const [isSpeedingUp, setIsSpeedingUp] = useState(false);
     const [isSeeking, setIsSeeking] = useState(false);
+    const { width, height } = useWindowDimensions();
 
-    // Image zoom states
+    // VideoView ref for fullscreen control
+    const videoViewRef = useRef<any>(null);
+
+    // Rotation animation values
+    const rotateAnim = useSharedValue(0);
+    const scaleAnim = useSharedValue(1);
+
+    // Clean Mode State - Now Controlled via Props
+    // const [isCleanMode, setIsCleanMode] = useState(false); // Removed local state
+
+    // BackHandler for Clean Mode
+    useEffect(() => {
+        if (!isActive) return;
+
+        const backAction = () => {
+            // Priority 1: Exit Clean Mode
+            if (isCleanMode && onToggleCleanMode) {
+                onToggleCleanMode(false);
+                return true;
+            }
+            // Priority 2: Exit Fullscreen Mode
+            if (videoViewRef.current) {
+                try {
+                    videoViewRef.current.exitFullscreen();
+                    return true;
+                } catch (error) {
+                    // Not in fullscreen
+                }
+            }
+            return false;
+        };
+
+        const backHandler = BackHandler.addEventListener(
+            'hardwareBackPress',
+            backAction
+        );
+
+        return () => backHandler.remove();
+    }, [isCleanMode, isActive, onToggleCleanMode]);
+
+    // Landscape mode animation
+
+
+    // Cleanup: Remove the effect that notifies parent, since parent now controls it.
+
     const scale = useSharedValue(1);
     const savedScale = useSharedValue(1);
     const translateX = useSharedValue(0);
@@ -229,10 +286,31 @@ export default function ThreadItem({ thread, isActive, onPressAvatar, isActiveTa
             runOnJS(notifyZoomChange)(targetScale > 1);
         });
 
-    // Only double tap for zoom, no pinch gesture
-    const imageGestures = Gesture.Race(
-        doubleTapGesture,
-        panGesture
+    // Pinch Gesture for Image (Only Clean Mode Enter)
+    const pinchGesture = Gesture.Pinch()
+        .onUpdate((e) => {
+            // Trigger Clean Mode logic if scaling up
+            if (e.scale > 1.2 && !isCleanMode && onToggleCleanMode) {
+                runOnJS(onToggleCleanMode)(true);
+            }
+            // Note: We deliberately do NOT zoom the image on pinch
+        });
+
+    // Video Pinch Gesture (Exclusive for Clean Mode)
+    const videoPinchGesture = Gesture.Pinch()
+        .onUpdate((e) => {
+            if (e.scale > 1.2 && !isCleanMode && onToggleCleanMode) {
+                runOnJS(onToggleCleanMode)(true);
+            }
+        });
+
+    const videoGestures = Gesture.Simultaneous(videoPinchGesture, longPressGesture);
+
+    // Combine gestures
+    const imageGestures = Gesture.Simultaneous(
+        pinchGesture,
+        panGesture,
+        doubleTapGesture
     );
 
     const animatedImageStyle = useAnimatedStyle(() => ({
@@ -242,6 +320,8 @@ export default function ThreadItem({ thread, isActive, onPressAvatar, isActiveTa
             { scale: scale.value }
         ]
     }));
+
+
 
     useEffect(() => {
         if (player) {
@@ -397,6 +477,8 @@ export default function ThreadItem({ thread, isActive, onPressAvatar, isActiveTa
         );
     };
 
+
+
     const decodeHtml = (html: string) => {
         if (!html) return '';
         return html
@@ -471,12 +553,14 @@ export default function ThreadItem({ thread, isActive, onPressAvatar, isActiveTa
         }
     };
 
+
+
     return (
         <View style={styles.container}>
             {isVideo ? (
-                <GestureDetector gesture={longPressGesture}>
+                <GestureDetector gesture={videoGestures}>
                     <TouchableWithoutFeedback onPress={togglePlay}>
-                        <View style={styles.mediaContainer}>
+                        <View style={styles.media}>
                             {/* Thumbnail as background */}
                             {thumbnailUri && (
                                 <Image
@@ -486,9 +570,10 @@ export default function ThreadItem({ thread, isActive, onPressAvatar, isActiveTa
                                 />
                             )}
 
-                            {/* Video player */}
-                            {(shouldLoadVideo ?? shouldLoad) && (
+                            {/* Video player - hide when in background to prevent blur penetration */}
+                            {!isBackground && (shouldLoadVideo ?? shouldLoad) && (
                                 <VideoView
+                                    ref={videoViewRef}
                                     style={styles.media}
                                     player={player}
                                     contentFit="contain"
@@ -519,48 +604,54 @@ export default function ThreadItem({ thread, isActive, onPressAvatar, isActiveTa
                                 </View>
                             )}
 
-                            {/* Progress Bar and Time Display */}
-                            <View style={styles.progressContainer}>
-                                <View style={styles.timeRow}>
+                            {/* Time Display - only show when paused, positioned above progress bar */}
+                            {!isPlaying && (
+                                <View style={styles.timeDisplayContainer}>
                                     <Text style={styles.progressTime}>
                                         {formatDuration(currentTime)} / {formatDuration(duration)}
                                     </Text>
                                 </View>
+                            )}
 
-                                <GestureDetector gesture={seekGesture}>
-                                    <View style={styles.progressBarTouchArea}>
-                                        <View style={styles.progressBarBackground}>
-                                            {/* Buffer progress */}
-                                            <View
-                                                style={[
-                                                    styles.progressBarBuffer,
-                                                    { width: `${duration > 0 ? (bufferedPosition / duration) * 100 : 0}%` }
-                                                ]}
-                                            />
-                                            {/* Playback progress */}
-                                            <View
-                                                style={[
-                                                    styles.progressBarFill,
-                                                    { width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }
-                                                ]}
-                                            />
-                                            {/* Scrubber Knob */}
-                                            <View
-                                                style={[
-                                                    styles.scrubberKnob,
-                                                    { left: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }
-                                                ]}
-                                            />
+                            {/* Progress Bar - only show when paused */}
+                            {!isPlaying && (
+                                <View style={styles.progressContainer}>
+                                    <GestureDetector gesture={seekGesture}>
+                                        <View style={styles.progressBarTouchArea}>
+                                            <View style={styles.progressBarBackground}>
+                                                {/* Buffer progress */}
+                                                <View
+                                                    style={[
+                                                        styles.progressBarBuffer,
+                                                        { width: `${duration > 0 ? (bufferedPosition / duration) * 100 : 0}%` }
+                                                    ]}
+                                                />
+                                                {/* Playback progress */}
+                                                <View
+                                                    style={[
+                                                        styles.progressBarFill,
+                                                        { width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }
+                                                    ]}
+                                                />
+                                                {/* Scrubber Knob */}
+                                                <View
+                                                    style={[
+                                                        styles.scrubberKnob,
+                                                        { left: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }
+                                                    ]}
+                                                />
+                                            </View>
                                         </View>
-                                    </View>
-                                </GestureDetector>
-                            </View>
+                                    </GestureDetector>
+                                </View>
+                            )}
+
                         </View>
                     </TouchableWithoutFeedback>
                 </GestureDetector>
             ) : (
                 <GestureDetector gesture={imageGestures}>
-                    <View style={styles.mediaContainer}>
+                    <View style={styles.media}>
                         {imageUri ? (
                             <Animated.Image
                                 source={{ uri: imageUri }}
@@ -579,54 +670,62 @@ export default function ThreadItem({ thread, isActive, onPressAvatar, isActiveTa
                 </GestureDetector>
             )}
 
-            <View style={styles.overlay}>
-                <View style={styles.textContainer}>
-                    <Text style={styles.title} numberOfLines={2}>{decodeHtml(opThread?.sub || thread.sub || thread.name || 'Anonymous')}</Text>
-                    <Text style={styles.comment} numberOfLines={3}>
-                        {thread.com ? decodeHtml(thread.com) : ''}
-                    </Text>
-                    <Text style={styles.timeText}>{formatTime(thread.time)}</Text>
+            {/* Overlay text - hide in landscape mode */}
+            {!isCleanMode && (
+                <View style={styles.overlay}>
+                    <View style={styles.textContainer}>
+                        <Text style={styles.title} numberOfLines={2}>{decodeHtml(opThread?.sub || thread.sub || thread.name || 'Anonymous')}</Text>
+                        <Text style={styles.comment} numberOfLines={3}>
+                            {thread.com ? decodeHtml(thread.com) : ''}
+                        </Text>
+                        <Text style={styles.timeText}>{formatTime(thread.time)}</Text>
+                    </View>
                 </View>
-            </View>
+            )}
 
-            <View style={styles.rightMenu}>
-                <View style={styles.avatarContainer}>
-                    <TouchableOpacity onPress={onPressAvatar}>
-                        {avatarUri ? (
-                            <Image source={{ uri: avatarUri }} style={styles.avatar} />
-                        ) : (
-                            <View style={[styles.avatar, { backgroundColor: stringToColor(thread.no.toString()) }]}>
-                                <Text style={styles.avatarText}>{thread.name ? thread.name[0] : 'A'}</Text>
-                            </View>
-                        )}
+            {/* Widescreen Rotate Button - hide in landscape mode */}
+
+
+            {!isCleanMode && (
+                <View style={styles.rightMenu}>
+                    <View style={styles.avatarContainer}>
+                        <TouchableOpacity onPress={onPressAvatar}>
+                            {avatarUri ? (
+                                <Image source={{ uri: avatarUri }} style={styles.avatar} />
+                            ) : (
+                                <View style={[styles.avatar, { backgroundColor: stringToColor(thread.no.toString()) }]}>
+                                    <Text style={styles.avatarText}>{thread.name ? thread.name[0] : 'A'}</Text>
+                                </View>
+                            )}
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.plusIcon} onPress={handleFollow}>
+                            <Ionicons name={following ? "checkmark" : "add"} size={12} color="#fff" />
+                        </TouchableOpacity>
+                    </View>
+
+                    <TouchableOpacity style={styles.iconButton} onPress={handleStar}>
+                        <MaterialCommunityIcons name={starred ? "clover" : "clover-outline"} size={35} color={starred ? "#00ff00" : "#fff"} />
+                        <Text style={styles.iconText}>{starred ? 'Peeked' : 'Peek'}</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.plusIcon} onPress={handleFollow}>
-                        <Ionicons name={following ? "checkmark" : "add"} size={12} color="#fff" />
+
+                    {/* More Menu Button */}
+                    <TouchableOpacity style={styles.iconButton} onPress={() => setMenuVisible(true)}>
+                        <Ionicons name="ellipsis-horizontal-circle" size={40} color="#fff" />
+                        <Text style={styles.iconText}>More</Text>
                     </TouchableOpacity>
+
+                    {/* Volume Control (Video Only) */}
+                    {isVideo && (
+                        <TouchableOpacity style={styles.iconButton} onPress={toggleMute}>
+                            <Ionicons
+                                name={isMuted ? "volume-mute" : "volume-high"}
+                                size={25}
+                                color="#fff"
+                            />
+                        </TouchableOpacity>
+                    )}
                 </View>
-
-                <TouchableOpacity style={styles.iconButton} onPress={handleStar}>
-                    <MaterialCommunityIcons name={starred ? "clover" : "clover-outline"} size={35} color={starred ? "#00ff00" : "#fff"} />
-                    <Text style={styles.iconText}>{starred ? 'Peeked' : 'Peek'}</Text>
-                </TouchableOpacity>
-
-                {/* More Menu Button */}
-                <TouchableOpacity style={styles.iconButton} onPress={() => setMenuVisible(true)}>
-                    <Ionicons name="ellipsis-horizontal-circle" size={40} color="#fff" />
-                    <Text style={styles.iconText}>More</Text>
-                </TouchableOpacity>
-
-                {/* Volume Control (Video Only) */}
-                {isVideo && (
-                    <TouchableOpacity style={styles.iconButton} onPress={toggleMute}>
-                        <Ionicons
-                            name={isMuted ? "volume-mute" : "volume-high"}
-                            size={25}
-                            color="#fff"
-                        />
-                    </TouchableOpacity>
-                )}
-            </View>
+            )}
 
             <Modal
                 visible={menuVisible}
@@ -665,8 +764,8 @@ function stringToColor(str: string) {
 
 const styles = StyleSheet.create({
     container: {
-        width: width,
-        height: height,
+        width: '100%',
+        height: '100%',
         backgroundColor: '#000',
     },
     media: {
@@ -684,6 +783,7 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
     },
+
     overlay: {
         position: 'absolute',
         bottom: 60,
@@ -719,7 +819,7 @@ const styles = StyleSheet.create({
     },
     rightMenu: {
         position: 'absolute',
-        bottom: 60,
+        bottom: 40,
         right: 10,
         alignItems: 'center',
     },
@@ -746,6 +846,21 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         fontSize: 20,
     },
+    rotateButton: {
+        position: 'absolute',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(0,0,0,0.6)',
+        borderRadius: 10,
+        padding: 10,
+        width: 80, // Approximate width to center text
+    },
+    rotateButtonText: {
+        color: '#fff',
+        fontSize: 10,
+        marginTop: 2,
+    },
+
     plusIcon: {
         position: 'absolute',
         bottom: -10,
@@ -793,16 +908,25 @@ const styles = StyleSheet.create({
         left: 0,
         right: 0,
         zIndex: 10,
-        paddingBottom: 10,
+    },
+    timeDisplayContainer: {
+        position: 'absolute',
+        bottom: 30,
+        left: 0,
+        right: 0,
+        zIndex: 11,
+        flexDirection: 'row',
+        justifyContent: 'center',
     },
     timeRow: {
         flexDirection: 'row',
         justifyContent: 'center',
-        marginBottom: 5,
+        marginTop: 5,
+        paddingBottom: 10,
     },
     progressBarTouchArea: {
         height: 30, // Larger touch area
-        justifyContent: 'center',
+        justifyContent: 'flex-end', // Align progress bar to bottom
     },
     progressBarBackground: {
         height: 4,
@@ -821,11 +945,11 @@ const styles = StyleSheet.create({
     },
     scrubberKnob: {
         position: 'absolute',
-        width: 12,
-        height: 12,
-        borderRadius: 6,
+        width: 6,
+        height: 6,
+        borderRadius: 3,
         backgroundColor: '#fff',
-        top: -4,
+        top: -1,
         marginLeft: -6,
     },
     progressTime: {

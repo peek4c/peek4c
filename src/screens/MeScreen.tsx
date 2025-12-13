@@ -10,9 +10,10 @@
  */
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, Alert, Image, Dimensions } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, Alert, Image, Dimensions, useWindowDimensions } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as ScreenOrientation from 'expo-screen-orientation';
 import { getHistory, getStars, getFollowing, clearHistory, clearCache, toggleFollow, getHistoryBoards, getBlockedItems, toggleBlock, isBlocked } from '../database/db';
 import BlockedKeywordsView from '../components/BlockedKeywordsView';
 import { ThreadPost } from '../types';
@@ -23,9 +24,7 @@ import { followEvents } from '../services/followEvents';
 import { clearVideoCacheAsync, getCurrentVideoCacheSize } from 'expo-video';
 import NetInfo from '@react-native-community/netinfo';
 
-const { width } = Dimensions.get('window');
-const GRID_COLUMNS = 3;
-const THUMBNAIL_SIZE = (width - 40) / GRID_COLUMNS;
+
 
 type Tab = 'Following' | 'Stars' | 'History';
 
@@ -47,12 +46,19 @@ export default function MeScreen({ navigation }: any) {
 
     const [hasMore, setHasMore] = useState(true);
     const [isLoadingMore, setIsLoadingMore] = useState(false);
+    const { width, height } = useWindowDimensions();
+    const isLandscape = width > height;
+    const GRID_COLUMNS = isLandscape ? 6 : 3;
+    const THUMBNAIL_SIZE = (width - 40) / GRID_COLUMNS;
 
     useEffect(() => {
         const unsubscribe = NetInfo.addEventListener(state => {
             setIsOffline(state.isConnected === false);
         });
-        return unsubscribe;
+
+        return () => {
+            unsubscribe();
+        };
     }, []);
 
     // Refresh data when screen comes into focus
@@ -212,8 +218,21 @@ export default function MeScreen({ navigation }: any) {
         if (activeTab === 'Stars' || activeTab === 'History') {
             // Find index of item in data
             const index = data.findIndex(d => d.board === item.board && d.no === item.no);
-            console.log('[MeScreen] Navigating to MediaList', { index });
-            navigation.navigate('MediaList', { threads: data, initialIndex: index !== -1 ? index : 0 });
+            console.log('[MeScreen] Navigating to MediaList', { index, totalItems: data.length });
+
+            // Limit data to prevent OOM: only pass a window of items around the clicked item
+            const WINDOW_SIZE = 20; // Only load 20 items at a time
+            const halfWindow = Math.floor(WINDOW_SIZE / 2);
+            const startIndex = Math.max(0, index - halfWindow);
+            const endIndex = Math.min(data.length, index + halfWindow);
+            const windowedData = data.slice(startIndex, endIndex);
+            const adjustedIndex = index - startIndex; // Adjust index for the windowed data
+
+            console.log('[MeScreen] Window:', { startIndex, endIndex, windowSize: windowedData.length, adjustedIndex });
+            navigation.navigate('MediaList', {
+                threads: windowedData,
+                initialIndex: adjustedIndex
+            });
         } else {
             console.log('[MeScreen] Navigating to ThreadDetail');
             navigation.navigate('ThreadDetail', { thread: item });
@@ -247,7 +266,7 @@ export default function MeScreen({ navigation }: any) {
                 />
             );
         }
-        return <ThumbnailItem item={item} onPress={() => handleItemPress(item)} />;
+        return <ThumbnailItem item={item} onPress={() => handleItemPress(item)} thumbnailSize={THUMBNAIL_SIZE} />;
     };
 
     return (
@@ -418,7 +437,7 @@ export default function MeScreen({ navigation }: any) {
                 <BlockedKeywordsView />
             ) : (
                 <FlatList
-                    key={activeTab}
+                    key={`${activeTab}-${GRID_COLUMNS}`}
                     data={data}
                     keyExtractor={(item, index) => `${item.board}-${item.no}-${index}`}
                     renderItem={renderItem}
@@ -451,7 +470,7 @@ export default function MeScreen({ navigation }: any) {
     );
 }
 
-function ThumbnailItem({ item, onPress }: { item: ThreadPost; onPress: () => void }) {
+function ThumbnailItem({ item, onPress, thumbnailSize }: { item: ThreadPost; onPress: () => void; thumbnailSize: number }) {
     const [thumbnailUri, setThumbnailUri] = useState<string | null>(null);
 
     useEffect(() => {
@@ -490,7 +509,7 @@ function ThumbnailItem({ item, onPress }: { item: ThreadPost; onPress: () => voi
     const opSub = getOpSub();
 
     return (
-        <TouchableOpacity style={styles.thumbnail} onPress={onPress}>
+        <TouchableOpacity style={[styles.thumbnail, { width: thumbnailSize, height: thumbnailSize }]} onPress={onPress}>
             {thumbnailUri ? (
                 <Image source={{ uri: thumbnailUri }} style={styles.thumbnailImage} />
             ) : (
@@ -688,8 +707,6 @@ const styles = StyleSheet.create({
         padding: 10,
     },
     thumbnail: {
-        width: THUMBNAIL_SIZE,
-        height: THUMBNAIL_SIZE,
         margin: 5,
         position: 'relative',
     },
