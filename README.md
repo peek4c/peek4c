@@ -5,13 +5,27 @@
 >
 > 4chan.org may contain adult, violent, offensive, or illegal content. By using this app, you confirm you are 18+ and assume all risks.
 
-> 🔔 **封闭内测 / Closed Beta**
+> 🔔 **封闭内测（Closed Beta）**
 >
-> 本应用正在 Google Play 进行封闭内测。要加入内测，请加入谷歌群组： https://groups.google.com/g/tikchan 。加入后即可通过 Google Play 安装： https://play.google.com/store/apps/details?id=io.mybatis.tikchan 。谷歌要求至少招募 12 名测试人员并参与至少 14 天的封闭测试。欢迎大家积极参与。
+> 本应用正在 Google Play 进行封闭内测。
+>
+> 要加入内测，请加入谷歌群组： [加入 Google 群组](https://groups.google.com/g/tikchan)。
+>
+> 加入后可在 Google Play 安装： [在 Google Play 安装](https://play.google.com/store/apps/details?id=io.mybatis.tikchan)。
+>
+> 谷歌要求：至少招募 12 名测试人员，并参与至少 14 天的封闭测试。欢迎大家积极参与！
+>
+> ---
 >
 > 🔔 **Closed Beta**
 >
-> This app is currently in a closed beta on Google Play. To join the beta, please join the Google Group: https://groups.google.com/g/tikchan . After joining you can install the app from Google Play: https://play.google.com/store/apps/details?id=io.mybatis.tikchan . Google requires recruiting at least 12 testers who participate for at least 14 days. Please consider joining.
+> This app is currently in a closed beta on Google Play.
+>
+> To join the beta, please join the Google Group: [Join the Google Group](https://groups.google.com/g/tikchan).
+>
+> After joining, install the app from Google Play: [Install on Google Play](https://play.google.com/store/apps/details?id=io.mybatis.tikchan).
+>
+> Google requires at least 12 testers who participate for at least 14 days. Please consider joining.
 
 ## 📱 About
 
