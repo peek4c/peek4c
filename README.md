@@ -5,6 +5,14 @@
 >
 > 4chan.org may contain adult, violent, offensive, or illegal content. By using this app, you confirm you are 18+ and assume all risks.
 
+> 🔔 **封闭内测 / Closed Beta**
+>
+> 本应用正在 Google Play 进行封闭内测。要加入内测，请加入谷歌群组： https://groups.google.com/g/tikchan 。加入后即可通过 Google Play 安装： https://play.google.com/store/apps/details?id=io.mybatis.tikchan 。谷歌要求至少招募 12 名测试人员并参与至少 14 天的封闭测试。欢迎大家积极参与。
+>
+> 🔔 **Closed Beta**
+>
+> This app is currently in a closed beta on Google Play. To join the beta, please join the Google Group: https://groups.google.com/g/tikchan . After joining you can install the app from Google Play: https://play.google.com/store/apps/details?id=io.mybatis.tikchan . Google requires recruiting at least 12 testers who participate for at least 14 days. Please consider joining.
+
 ## 📱 About
 
 Peek4c is a third-party 4chan client application built with React Native and Expo, providing a TikTok-like vertical scrolling browsing experience.
