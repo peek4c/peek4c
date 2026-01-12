@@ -88,7 +88,7 @@ Peek4c is a third-party 4chan client application built with React Native and Exp
 ### Legal Documents
 
 - [Full Disclaimer](DISCLAIMER.md)
-- [Open Source License](LICENSE) - GPLv3 License
+- [Open Source License](LICENSE) - Apache License 2.0
 - [Privacy Policy](assets/legal/privacy-policy.md)
 - [Terms of Service](assets/legal/terms-of-service.md)
 
